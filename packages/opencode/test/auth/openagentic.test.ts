@@ -3,7 +3,14 @@ import { describe, expect, test } from "bun:test"
 // Isolasi dari env user (preload tidak menghapus var ini)
 delete process.env["OPENCODE_AUTH_CONTENT"]
 
-import { base64UrlEncode, challengeS256, generateState, generateVerifier } from "../../src/auth/openagentic"
+import {
+  base64UrlEncode,
+  challengeS256,
+  generateState,
+  generateVerifier,
+  LoginError,
+  startCallbackServer,
+} from "../../src/auth/openagentic"
 
 describe("OpenagenticAuth.pkce", () => {
   test("generateVerifier default menghasilkan 64 char unreserved", () => {
@@ -38,5 +45,76 @@ describe("OpenagenticAuth.pkce", () => {
 
   test("base64UrlEncode tanpa padding dan URL-safe", () => {
     expect(base64UrlEncode(new Uint8Array([251, 255, 190]))).toBe("-_--")
+  })
+})
+
+describe("OpenagenticAuth.callbackServer", () => {
+  test("happy path: GET /callback resolve code + halaman Berhasil", async () => {
+    const cb = startCallbackServer({ state: "state-1" })
+    try {
+      const response = await fetch(`http://127.0.0.1:${cb.port}/callback?code=abc-123&state=state-1`)
+      expect(response.status).toBe(200)
+      expect(response.headers.get("content-type")).toContain("text/html")
+      expect(await response.text()).toContain("Berhasil")
+      expect(await cb.code).toBe("abc-123")
+      expect(cb.url).toBe(`http://127.0.0.1:${cb.port}/callback`)
+    } finally {
+      cb.stop()
+    }
+  })
+
+  test("state mismatch: 400 + promise reject state_mismatch", async () => {
+    const cb = startCallbackServer({ state: "expected" })
+    try {
+      const response = await fetch(`http://127.0.0.1:${cb.port}/callback?code=abc&state=evil`)
+      expect(response.status).toBe(400)
+      const err = await cb.code.then(
+        () => undefined,
+        (e) => e,
+      )
+      expect(err).toBeInstanceOf(LoginError)
+      expect((err as LoginError).code).toBe("state_mismatch")
+    } finally {
+      cb.stop()
+    }
+  })
+
+  test("error=access_denied dari backend: reject access_denied", async () => {
+    const cb = startCallbackServer({ state: "s" })
+    try {
+      const response = await fetch(`http://127.0.0.1:${cb.port}/callback?error=access_denied&state=s`)
+      expect(response.status).toBe(400)
+      const err = await cb.code.then(
+        () => undefined,
+        (e) => e,
+      )
+      expect((err as LoginError).code).toBe("access_denied")
+    } finally {
+      cb.stop()
+    }
+  })
+
+  test("path selain /callback: 404, promise tetap pending", async () => {
+    const cb = startCallbackServer({ state: "s" })
+    try {
+      const response = await fetch(`http://127.0.0.1:${cb.port}/favicon.ico`)
+      expect(response.status).toBe(404)
+    } finally {
+      cb.stop()
+    }
+  })
+
+  test("timeout: reject dengan code timeout", async () => {
+    const cb = startCallbackServer({ state: "s", timeoutMs: 100 })
+    try {
+      const err = await cb.code.then(
+        () => undefined,
+        (e) => e,
+      )
+      expect(err).toBeInstanceOf(LoginError)
+      expect((err as LoginError).code).toBe("timeout")
+    } finally {
+      cb.stop()
+    }
   })
 })
