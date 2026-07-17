@@ -1,5 +1,10 @@
 export * as OpenagenticAuth from "./openagentic"
 
+import open from "open"
+import { makeRuntime } from "@opencode-ai/core/effect/runtime"
+import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
+import { Auth } from "@/auth"
+
 // ---------------------------------------------------------------------------
 // PKCE (RFC 7636) — pure helpers, unit-tested di test/auth/openagentic.test.ts
 // ---------------------------------------------------------------------------
@@ -197,4 +202,62 @@ export async function exchangeToken(input: {
   const data = await response.json().catch(() => undefined)
   if (!isTokenResponse(data)) throw new LoginError("invalid_response", "Response /api/v1/cli/token tidak valid.")
   return data
+}
+
+// ---------------------------------------------------------------------------
+// Orkestrasi login/logout
+// ---------------------------------------------------------------------------
+
+export const PROVIDER_ID = "openagentic"
+
+// Idiom bridging Effect -> Promise, sama dengan src/config/tui.ts:264.
+// makeRuntime lazy — ManagedRuntime baru dibuat saat run* pertama, jadi aman di module scope.
+const authRuntime = makeRuntime(Auth.Service, AppNodeBuilder.build(Auth.node))
+
+export interface LoginOptions {
+  /** Dipanggil dengan URL login bila browser gagal dibuka, agar caller mencetaknya. */
+  onUrl?: (url: string) => void
+  /** @internal test hook — default https://openagentic.id */
+  baseUrl?: string
+  /** @internal test hook — default 5 menit */
+  timeoutMs?: number
+  /** @internal test hook — default package `open` */
+  openBrowser?: (url: string) => Promise<void>
+}
+
+export interface LoginResult {
+  key: string
+  user: { email: string; name: string; plan: string }
+}
+
+export async function login(opts?: LoginOptions): Promise<LoginResult> {
+  const base = opts?.baseUrl ?? defaultBaseUrl()
+  const verifier = generateVerifier()
+  const challenge = await challengeS256(verifier)
+  const state = generateState()
+
+  const server = startCallbackServer({ state, timeoutMs: opts?.timeoutMs })
+  try {
+    const params = new URLSearchParams({
+      redirect_uri: server.url,
+      state,
+      code_challenge: challenge,
+      code_challenge_method: "S256",
+    })
+    const url = `${base}/auth/cli?${params.toString()}`
+
+    const openBrowser = opts?.openBrowser ?? ((target: string) => open(target).then(() => undefined))
+    await openBrowser(url).catch(() => opts?.onUrl?.(url))
+
+    const code = await server.code
+    const token = await exchangeToken({ code, verifier, baseUrl: base })
+    await authRuntime.runPromise((auth) => auth.set(PROVIDER_ID, { type: "api", key: token.api_key }))
+    return { key: token.api_key, user: token.user }
+  } finally {
+    server.stop()
+  }
+}
+
+export async function logout(): Promise<void> {
+  await authRuntime.runPromise((auth) => auth.remove(PROVIDER_ID))
 }

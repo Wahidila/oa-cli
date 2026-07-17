@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test"
+import { makeRuntime } from "@opencode-ai/core/effect/runtime"
+import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
+import { Auth } from "../../src/auth"
 
 // Isolasi dari env user (preload tidak menghapus var ini)
 delete process.env["OPENCODE_AUTH_CONTENT"]
@@ -9,9 +12,13 @@ import {
   exchangeToken,
   generateState,
   generateVerifier,
+  login,
   LoginError,
+  logout,
   startCallbackServer,
 } from "../../src/auth/openagentic"
+
+const authRt = makeRuntime(Auth.Service, AppNodeBuilder.build(Auth.node))
 
 describe("OpenagenticAuth.pkce", () => {
   test("generateVerifier default menghasilkan 64 char unreserved", () => {
@@ -190,5 +197,128 @@ describe("OpenagenticAuth.exchangeToken", () => {
     } finally {
       server.stop(true)
     }
+  })
+})
+
+describe("OpenagenticAuth.login (integrasi mock backend)", () => {
+  const user = { email: "roni@example.com", name: "Roni", plan: "free" }
+
+  // Mock openagentic.id: menerbitkan code lewat "browser" palsu, lalu
+  // memverifikasi PKCE penuh di POST /api/v1/cli/token.
+  function makeBackend() {
+    const issuedCode = "auth-code-1"
+    let challenge: string | undefined
+    const server = Bun.serve({
+      port: 0,
+      fetch: async (request) => {
+        const url = new URL(request.url)
+        if (request.method === "POST" && url.pathname === "/api/v1/cli/token") {
+          const body = (await request.json()) as { code: string; code_verifier: string }
+          const computed = base64UrlEncode(
+            await crypto.subtle.digest("SHA-256", new TextEncoder().encode(body.code_verifier)),
+          )
+          if (body.code !== issuedCode || challenge === undefined || computed !== challenge) {
+            return Response.json({ error: "invalid_grant" }, { status: 400 })
+          }
+          return Response.json({ api_key: "oa-key-integration", user })
+        }
+        return new Response("not found", { status: 404 })
+      },
+    })
+    // "Browser" palsu: baca URL /auth/cli, langsung redirect ke loopback callback
+    const browse = async (target: string, state?: string) => {
+      const url = new URL(target)
+      expect(url.pathname).toBe("/auth/cli")
+      expect(url.searchParams.get("code_challenge_method")).toBe("S256")
+      challenge = url.searchParams.get("code_challenge") ?? undefined
+      const redirect = url.searchParams.get("redirect_uri")!
+      const callbackState = state ?? url.searchParams.get("state")!
+      await fetch(`${redirect}?code=${issuedCode}&state=${encodeURIComponent(callbackState)}`)
+    }
+    return { server, browse, baseUrl: () => server.url.origin }
+  }
+
+  test("happy path: login menyimpan key ke Auth dan mengembalikan user", async () => {
+    const backend = makeBackend()
+    try {
+      const result = await login({
+        baseUrl: backend.baseUrl(),
+        openBrowser: (url) => backend.browse(url),
+      })
+      expect(result.key).toBe("oa-key-integration")
+      expect(result.user).toEqual(user)
+      const stored = await authRt.runPromise((auth) => auth.get("openagentic"))
+      expect(stored).toMatchObject({ type: "api", key: "oa-key-integration" })
+    } finally {
+      backend.server.stop(true)
+      await logout()
+    }
+  })
+
+  test("browser gagal terbuka: onUrl dipanggil dan login tetap sukses via URL manual", async () => {
+    const backend = makeBackend()
+    const seen: string[] = []
+    try {
+      const result = await login({
+        baseUrl: backend.baseUrl(),
+        openBrowser: async () => {
+          throw new Error("no browser available")
+        },
+        onUrl: (url) => {
+          seen.push(url)
+          void backend.browse(url)
+        },
+      })
+      expect(seen).toHaveLength(1)
+      expect(seen[0]).toContain("/auth/cli?")
+      expect(result.key).toBe("oa-key-integration")
+    } finally {
+      backend.server.stop(true)
+      await logout()
+    }
+  })
+
+  test("state mismatch: login reject, tidak ada key tersimpan", async () => {
+    const backend = makeBackend()
+    try {
+      const err = await login({
+        baseUrl: backend.baseUrl(),
+        openBrowser: (url) => backend.browse(url, "wrong-state"),
+      }).then(
+        () => undefined,
+        (e) => e,
+      )
+      expect(err).toBeInstanceOf(LoginError)
+      expect((err as LoginError).code).toBe("state_mismatch")
+      const stored = await authRt.runPromise((auth) => auth.get("openagentic"))
+      expect(stored).toBeUndefined()
+    } finally {
+      backend.server.stop(true)
+    }
+  })
+
+  test("timeout: tanpa callback, login reject timeout", async () => {
+    const backend = makeBackend()
+    try {
+      const err = await login({
+        baseUrl: backend.baseUrl(),
+        timeoutMs: 200,
+        openBrowser: async () => {},
+      }).then(
+        () => undefined,
+        (e) => e,
+      )
+      expect(err).toBeInstanceOf(LoginError)
+      expect((err as LoginError).code).toBe("timeout")
+    } finally {
+      backend.server.stop(true)
+    }
+  })
+
+  test("logout menghapus entri openagentic", async () => {
+    await authRt.runPromise((auth) => auth.set("openagentic", { type: "api", key: "to-be-removed" }))
+    await logout()
+    const stored = await authRt.runPromise((auth) => auth.get("openagentic"))
+    expect(stored).toBeUndefined()
   })
 })
