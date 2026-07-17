@@ -150,3 +150,51 @@ export function startCallbackServer(opts: {
     },
   }
 }
+
+// ---------------------------------------------------------------------------
+// Token exchange: POST /api/v1/cli/token { code, code_verifier }
+// ---------------------------------------------------------------------------
+
+export function defaultBaseUrl(): string {
+  return process.env["OPENAGENTIC_BASE_URL"] ?? "https://openagentic.id"
+}
+
+export interface TokenResponse {
+  api_key: string
+  user: { email: string; name: string; plan: string }
+}
+
+function isTokenResponse(data: unknown): data is TokenResponse {
+  if (typeof data !== "object" || data === null) return false
+  const record = data as Record<string, unknown>
+  if (typeof record.api_key !== "string") return false
+  const user = record.user as Record<string, unknown> | undefined
+  if (typeof user !== "object" || user === null) return false
+  return typeof user.email === "string" && typeof user.name === "string" && typeof user.plan === "string"
+}
+
+export async function exchangeToken(input: {
+  code: string
+  verifier: string
+  baseUrl?: string
+}): Promise<TokenResponse> {
+  const base = input.baseUrl ?? defaultBaseUrl()
+  const response = await fetch(`${base}/api/v1/cli/token`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ code: input.code, code_verifier: input.verifier }),
+  })
+  if (!response.ok) {
+    const body = (await response.json().catch(() => undefined)) as { error?: string } | undefined
+    if (body?.error === "invalid_grant") {
+      throw new LoginError("invalid_grant", "Authorization code kedaluwarsa atau sudah dipakai — coba login ulang.")
+    }
+    throw new LoginError(
+      "server_error",
+      `Tukar token gagal (${response.status})${body?.error ? `: ${body.error}` : ""}`,
+    )
+  }
+  const data = await response.json().catch(() => undefined)
+  if (!isTokenResponse(data)) throw new LoginError("invalid_response", "Response /api/v1/cli/token tidak valid.")
+  return data
+}

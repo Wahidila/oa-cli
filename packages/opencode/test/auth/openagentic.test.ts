@@ -6,6 +6,7 @@ delete process.env["OPENCODE_AUTH_CONTENT"]
 import {
   base64UrlEncode,
   challengeS256,
+  exchangeToken,
   generateState,
   generateVerifier,
   LoginError,
@@ -115,6 +116,79 @@ describe("OpenagenticAuth.callbackServer", () => {
       expect((err as LoginError).code).toBe("timeout")
     } finally {
       cb.stop()
+    }
+  })
+})
+
+describe("OpenagenticAuth.exchangeToken", () => {
+  const user = { email: "roni@example.com", name: "Roni", plan: "free" }
+
+  function makeTokenServer(handler: (body: { code: string; code_verifier: string }) => Response | Promise<Response>) {
+    return Bun.serve({
+      port: 0,
+      fetch: async (request) => {
+        const url = new URL(request.url)
+        if (request.method === "POST" && url.pathname === "/api/v1/cli/token") {
+          return handler((await request.json()) as { code: string; code_verifier: string })
+        }
+        return new Response("not found", { status: 404 })
+      },
+    })
+  }
+
+  test("happy path: kirim code + code_verifier sebagai JSON, terima api_key + user", async () => {
+    let received: { code: string; code_verifier: string } | undefined
+    const server = makeTokenServer((body) => {
+      received = body
+      return Response.json({ api_key: "oa-key-123", user })
+    })
+    try {
+      const result = await exchangeToken({ code: "the-code", verifier: "the-verifier", baseUrl: server.url.origin })
+      expect(result.api_key).toBe("oa-key-123")
+      expect(result.user).toEqual(user)
+      expect(received).toEqual({ code: "the-code", code_verifier: "the-verifier" })
+    } finally {
+      server.stop(true)
+    }
+  })
+
+  test("400 invalid_grant → LoginError invalid_grant", async () => {
+    const server = makeTokenServer(() => Response.json({ error: "invalid_grant" }, { status: 400 }))
+    try {
+      const err = await exchangeToken({ code: "x", verifier: "y", baseUrl: server.url.origin }).then(
+        () => undefined,
+        (e) => e,
+      )
+      expect(err).toBeInstanceOf(LoginError)
+      expect((err as LoginError).code).toBe("invalid_grant")
+    } finally {
+      server.stop(true)
+    }
+  })
+
+  test("500 → LoginError server_error", async () => {
+    const server = makeTokenServer(() => new Response("boom", { status: 500 }))
+    try {
+      const err = await exchangeToken({ code: "x", verifier: "y", baseUrl: server.url.origin }).then(
+        () => undefined,
+        (e) => e,
+      )
+      expect((err as LoginError).code).toBe("server_error")
+    } finally {
+      server.stop(true)
+    }
+  })
+
+  test("200 dengan body tidak lengkap → LoginError invalid_response", async () => {
+    const server = makeTokenServer(() => Response.json({ api_key: "k" }))
+    try {
+      const err = await exchangeToken({ code: "x", verifier: "y", baseUrl: server.url.origin }).then(
+        () => undefined,
+        (e) => e,
+      )
+      expect((err as LoginError).code).toBe("invalid_response")
+    } finally {
+      server.stop(true)
     }
   })
 })
