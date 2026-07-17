@@ -176,7 +176,9 @@ Halaman login varian CLI.
 
 ### `GET /api/v1/models` (penyesuaian)
 - Auth: API key
-- Response: **semua model aktif** platform, dengan metadata per model: `id`, `name`, `provider_asal` (mis. anthropic/openai/google), `context_limit`, `default: boolean` (tepat satu `true`)
+- Response: **semua model aktif** platform dalam envelope OpenAI-compatible:
+  `{ "data": [ { "id", "name", "provider", "context_limit", "default" } ] }`
+  — `provider` = asal model (mis. anthropic/openai/google), `default: boolean` (tepat satu `true`)
 
 ### Kontrak error terstruktur (dipakai CLI untuk pesan ramah)
 - `401 invalid_key` — key dicabut/tidak valid
