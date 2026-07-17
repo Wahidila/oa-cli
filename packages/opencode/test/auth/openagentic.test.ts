@@ -255,6 +255,27 @@ describe("OpenagenticAuth.login (integrasi mock backend)", () => {
     }
   })
 
+  test("browser sukses terbuka: onUrl tetap dipanggil (fallback display, bukan hanya saat gagal)", async () => {
+    const backend = makeBackend()
+    const seen: string[] = []
+    try {
+      const result = await login({
+        baseUrl: backend.baseUrl(),
+        openBrowser: (url) => backend.browse(url),
+        onUrl: (url) => {
+          seen.push(url)
+        },
+      })
+      expect(seen).toHaveLength(1)
+      expect(seen[0]).toContain("/auth/cli?")
+      expect(seen[0]).toContain("code_challenge_method=S256")
+      expect(result.key).toBe("oa-key-integration")
+    } finally {
+      backend.server.stop(true)
+      await logout()
+    }
+  })
+
   test("browser gagal terbuka: onUrl dipanggil dan login tetap sukses via URL manual", async () => {
     const backend = makeBackend()
     const seen: string[] = []

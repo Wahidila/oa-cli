@@ -215,7 +215,12 @@ export const PROVIDER_ID = "openagentic"
 const authRuntime = makeRuntime(Auth.Service, AppNodeBuilder.build(Auth.node))
 
 export interface LoginOptions {
-  /** Dipanggil dengan URL login bila browser gagal dibuka, agar caller mencetaknya. */
+  /**
+   * Dipanggil selalu (jika disediakan) dengan URL login, segera setelah URL
+   * terbentuk — terlepas dari apakah browser berhasil dibuka. Dipakai caller
+   * untuk menampilkan URL sebagai fallback copy-paste (mis. layar login TUI),
+   * bukan hanya saat browser gagal dibuka.
+   */
   onUrl?: (url: string) => void
   /** @internal test hook — default https://openagentic.id */
   baseUrl?: string
@@ -246,8 +251,11 @@ export async function login(opts?: LoginOptions): Promise<LoginResult> {
     })
     const url = `${base}/auth/cli?${params.toString()}`
 
+    // onUrl selalu dipanggil (jika disediakan) — untuk display/fallback — terlepas
+    // dari keberhasilan pembukaan browser. Kegagalan buka browser ditelan terpisah.
+    opts?.onUrl?.(url)
     const openBrowser = opts?.openBrowser ?? ((target: string) => open(target).then(() => undefined))
-    await openBrowser(url).catch(() => opts?.onUrl?.(url))
+    await openBrowser(url).catch(() => {})
 
     const code = await server.code
     const token = await exchangeToken({ code, verifier, baseUrl: base })
