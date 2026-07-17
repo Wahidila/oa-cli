@@ -1,8 +1,9 @@
-import { describe, expect, beforeAll, afterAll } from "bun:test"
+import { describe, expect, beforeAll, afterAll, test } from "bun:test"
 import { Effect, Layer } from "effect"
 import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
 import { Flag } from "@opencode-ai/core/flag/flag"
 import { ModelsDev } from "@opencode-ai/core/models-dev"
+import { Provider as ProviderSchema } from "@opencode-ai/schema/provider"
 import { it } from "./lib/effect"
 import { readFile } from "fs/promises"
 import path from "path"
@@ -72,4 +73,10 @@ describe("ModelsDev locked catalog", () => {
       expect(Object.keys(result).sort()).toEqual(Object.keys(expected).sort())
     }),
   )
+})
+
+describe("Provider.ID statics", () => {
+  test("exposes the openagentic provider id", () => {
+    expect(ProviderSchema.ID.openagentic).toBe(ProviderSchema.ID.make("openagentic"))
+  })
 })
