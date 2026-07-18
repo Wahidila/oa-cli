@@ -70,7 +70,10 @@ export const rpc = {
       }),
     )
   },
-  async authStatus(): Promise<{ authenticated: boolean }> {
+  async authStatus(): Promise<{
+    authenticated: boolean
+    user?: { email: string; name: string; plan: string }
+  }> {
     // The interactive TUI gate requires a real Google login (a STORED
     // openagentic credential), NOT the OPENAGENTIC_API_KEY env escape hatch.
     // Using isLoggedIn() here keeps onboarding on the "Login dengan Google"
@@ -78,7 +81,8 @@ export const rpc = {
     // but no provider credential is connected) that falls through to the legacy
     // API-key connect dialog. The env key still gates `oa-cli run`/`serve`.
     const authenticated = await OpenagenticAuth.isLoggedIn().catch(() => false)
-    return { authenticated }
+    const user = authenticated ? await OpenagenticAuth.currentUser().catch(() => undefined) : undefined
+    return { authenticated, user }
   },
   async authLogin(): Promise<
     { ok: true; user: { email: string; name: string; plan: string } } | { ok: false; error: string }
@@ -94,6 +98,11 @@ export const rpc = {
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) }
     }
+  },
+  async authLogout(): Promise<void> {
+    try {
+      await OpenagenticAuth.logout()
+    } catch {}
   },
   async shutdown() {
     await InstanceRuntime.disposeAllInstances()

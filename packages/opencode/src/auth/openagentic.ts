@@ -265,7 +265,13 @@ export async function login(opts?: LoginOptions): Promise<LoginResult> {
 
     const code = await server.code
     const token = await exchangeToken({ code, verifier, baseUrl: base })
-    await authRuntime.runPromise((auth) => auth.set(PROVIDER_ID, { type: "api", key: token.api_key }))
+    await authRuntime.runPromise((auth) =>
+      auth.set(PROVIDER_ID, {
+        type: "api",
+        key: token.api_key,
+        metadata: { email: token.user.email, name: token.user.name, plan: token.user.plan },
+      }),
+    )
     return { key: token.api_key, user: token.user }
   } finally {
     server.stop()
@@ -323,4 +329,32 @@ export const isLoggedInEffect = Effect.fn("OpenagenticAuth.isLoggedIn")(function
 export async function isLoggedIn(): Promise<boolean> {
   const { AppRuntime } = await import("@/effect/app-runtime")
   return AppRuntime.runPromise(isLoggedInEffect())
+}
+
+export interface CurrentUser {
+  email: string
+  name: string
+  plan: string
+}
+
+/**
+ * Effect-native accessor for the logged-in user's identity (email/name/plan),
+ * persisted in the stored openagentic credential's metadata by login(). Never
+ * fails: no stored credential, a credential for another provider, or an older
+ * credential with no metadata (pre-dates this feature) all resolve to
+ * undefined rather than throwing — callers treat "no user" as "show a
+ * generic logged-in state", not an error.
+ */
+export const currentUserEffect = Effect.fn("OpenagenticAuth.currentUser")(function* () {
+  const auth = yield* Auth.Service
+  const info = yield* auth.get(PROVIDER_ID).pipe(Effect.orElseSucceed(() => undefined))
+  if (info?.type !== "api" || !info.metadata) return undefined
+  const { email, name, plan } = info.metadata
+  if (!email || !name || !plan) return undefined
+  return { email, name, plan } satisfies CurrentUser
+})
+
+export async function currentUser(): Promise<CurrentUser | undefined> {
+  const { AppRuntime } = await import("@/effect/app-runtime")
+  return AppRuntime.runPromise(currentUserEffect())
 }

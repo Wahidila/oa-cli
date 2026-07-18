@@ -52,6 +52,56 @@ describe("OpenagenticAuth.isAuthenticatedEffect", () => {
   )
 })
 
+describe("OpenagenticAuth.currentUserEffect", () => {
+  it.instance("undefined when no credential", () =>
+    Effect.gen(function* () {
+      const auth = yield* Auth.Service
+      yield* auth.remove(OpenagenticAuth.PROVIDER_ID)
+      expect(yield* OpenagenticAuth.currentUserEffect()).toBeUndefined()
+    }),
+  )
+
+  it.instance("returns the stored metadata as the user", () =>
+    Effect.gen(function* () {
+      const auth = yield* Auth.Service
+      yield* auth.set(OpenagenticAuth.PROVIDER_ID, {
+        type: "api",
+        key: "oa-test-key",
+        metadata: { email: "user@example.com", name: "User Example", plan: "pro" },
+      })
+      expect(yield* OpenagenticAuth.currentUserEffect()).toEqual({
+        email: "user@example.com",
+        name: "User Example",
+        plan: "pro",
+      })
+      yield* auth.remove(OpenagenticAuth.PROVIDER_ID)
+    }),
+  )
+
+  it.instance("undefined when the stored credential has no metadata (older credential)", () =>
+    Effect.gen(function* () {
+      const auth = yield* Auth.Service
+      yield* auth.set(OpenagenticAuth.PROVIDER_ID, { type: "api", key: "oa-test-key" })
+      expect(yield* OpenagenticAuth.currentUserEffect()).toBeUndefined()
+      yield* auth.remove(OpenagenticAuth.PROVIDER_ID)
+    }),
+  )
+
+  it.instance("undefined when only a credential for another provider exists", () =>
+    Effect.gen(function* () {
+      const auth = yield* Auth.Service
+      yield* auth.remove(OpenagenticAuth.PROVIDER_ID)
+      yield* auth.set("someother", {
+        type: "api",
+        key: "sk-other",
+        metadata: { email: "other@example.com", name: "Other", plan: "free" },
+      })
+      expect(yield* OpenagenticAuth.currentUserEffect()).toBeUndefined()
+      yield* auth.remove("someother")
+    }),
+  )
+})
+
 describe("OpenagenticAuth.hasEnvKey", () => {
   test("only a non-empty, non-whitespace value counts", () => {
     expect(OpenagenticAuth.hasEnvKey({})).toBe(false)

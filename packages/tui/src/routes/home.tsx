@@ -1,5 +1,5 @@
 import { Prompt, type PromptRef } from "../component/prompt"
-import { createEffect, createMemo, createSignal, onMount } from "solid-js"
+import { createEffect, createMemo, createSignal, onMount, Show } from "solid-js"
 import { Logo } from "../component/logo"
 import { useSync } from "../context/sync"
 import { Toast } from "../ui/toast"
@@ -11,6 +11,8 @@ import { usePluginRuntime } from "../plugin/runtime"
 import { useEditorContext } from "../context/editor"
 import { useTerminalDimensions } from "@opentui/solid"
 import { useTuiConfig } from "../config"
+import { useAuth } from "../context/auth"
+import { useTheme } from "../context/theme"
 import { HomeSessionDestinationProvider } from "./home/session-destination"
 
 let once = false
@@ -30,10 +32,22 @@ export function Home() {
   const editor = useEditorContext()
   const dimensions = useTerminalDimensions()
   const tuiConfig = useTuiConfig()
+  const auth = useAuth()
+  const { theme } = useTheme()
   const promptMaxWidth = createMemo(() => {
     const configured = tuiConfig.prompt?.max_width
     if (configured === "auto") return Math.max(75, Math.floor(dimensions().width * 0.7))
     return configured ?? 75
+  })
+  // Requirement: show which openagentic.id user is logged in (email + plan).
+  // An "authenticated" state with no user() means an older stored credential
+  // predating metadata persistence — fall back to a generic logged-in label
+  // instead of crashing on the missing email/plan.
+  const authLabel = createMemo(() => {
+    if (auth.state() !== "authenticated") return undefined
+    const user = auth.user()
+    if (!user) return "● Login openagentic.id"
+    return `● ${user.email} · ${user.plan}`
   })
   let sent = false
 
@@ -83,6 +97,13 @@ export function Home() {
             <Prompt ref={bind} right={<pluginRuntime.Slot name="home_prompt_right" />} placeholders={placeholder} />
           </pluginRuntime.Slot>
         </box>
+        <Show when={authLabel()}>
+          {(label) => (
+            <box flexShrink={0} flexDirection="row" justifyContent="center" paddingTop={1}>
+              <text fg={theme.primary}>{label()}</text>
+            </box>
+          )}
+        </Show>
         <pluginRuntime.Slot name="home_bottom" />
         <box flexGrow={1} minHeight={0} />
         <Toast />

@@ -54,10 +54,24 @@ describe("OpenagenticAuth.login (e2e against the mock)", () => {
     expect(result.user).toEqual({ email: "test@openagentic.id", name: "Test User", plan: "free" })
 
     const data = (await Bun.file(authFile()).json()) as Record<string, unknown>
-    expect(data["openagentic"]).toEqual({ type: "api", key: MOCK_API_KEY })
+    expect(data["openagentic"]).toEqual({
+      type: "api",
+      key: MOCK_API_KEY,
+      metadata: { email: "test@openagentic.id", name: "Test User", plan: "free" },
+    })
 
     // the CLI actually exchanged the code server-side against the real mock
     expect(mock.requests.some((r) => r.method === "POST" && r.path === "/api/v1/cli/token")).toBe(true)
+  })
+
+  test("login() persists the user metadata so currentUser() resolves it later", async () => {
+    mock = startOpenagenticMock()
+    process.env["OPENAGENTIC_BASE_URL"] = mock.url
+
+    await OpenagenticAuth.login({ openBrowser })
+
+    const user = await OpenagenticAuth.currentUser()
+    expect(user).toEqual({ email: "test@openagentic.id", name: "Test User", plan: "free" })
   })
 
   test("login() rejects when the callback state does not match", async () => {

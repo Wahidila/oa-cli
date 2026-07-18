@@ -297,6 +297,8 @@ export const TuiThreadCommand = cmd({
                   unsubscribe()
                 }
               },
+              // async wrapper collapses the nested Promise, same as status() above.
+              logout: async () => client.call("authLogout", undefined),
             },
             args: {
               continue: args.continue,

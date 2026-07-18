@@ -748,6 +748,17 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         },
         category: "Provider",
       },
+      {
+        name: "auth.logout",
+        title: "Logout",
+        slashName: "logout",
+        run: () => {
+          // Removes the stored credential and re-gates to the login screen
+          // (blocking chat until the user logs in again).
+          void auth.logout()
+        },
+        category: "Provider",
+      },
       ...(sync.data.console_state.switchableOrgCount > 1
         ? [
             {
