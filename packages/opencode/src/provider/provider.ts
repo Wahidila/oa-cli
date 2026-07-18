@@ -644,10 +644,18 @@ export function toPublicInfo(provider: Info): Info {
 export function defaultModelIDs<
   T extends { models: Record<string, { id: string; options?: Record<string, unknown> }> },
 >(providers: Record<string, T>) {
-  return mapValues(providers, (item) => {
-    const flagged = Object.values(item.models).find((model) => model.options?.["default"] === true)
-    return flagged?.id ?? sort(Object.values(item.models))[0].id
-  })
+  const result: Record<string, string> = {}
+  for (const [id, item] of Object.entries(providers)) {
+    const models = Object.values(item.models)
+    // A provider can legitimately have no models yet — e.g. openagentic before
+    // login/discovery, when the locked catalog entry is `models: {}`. Skip it
+    // (no default) instead of indexing `[0].id` on an empty list and crashing
+    // the provider-list endpoint on a fresh install.
+    if (models.length === 0) continue
+    const flagged = models.find((model) => model.options?.["default"] === true)
+    result[id] = flagged?.id ?? sort(models)[0].id
+  }
+  return result
 }
 
 export class ModelNotFoundError extends Schema.TaggedErrorClass<ModelNotFoundError>()("ProviderModelNotFoundError", {

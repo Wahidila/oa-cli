@@ -24,3 +24,20 @@ test("defaultModelIDs falls back to sort order without a flag", () => {
   }
   expect(Provider.defaultModelIDs(providers)).toEqual({ openagentic: "zzz-model" })
 })
+
+test("defaultModelIDs skips a provider with no models (fresh install, before discovery)", () => {
+  // openagentic's locked catalog entry is `models: {}` until login/discovery.
+  // The endpoint must not crash on the empty list.
+  const providers = {
+    openagentic: { models: {} as Record<string, { id: string; options?: Record<string, unknown> }> },
+  }
+  expect(Provider.defaultModelIDs(providers)).toEqual({})
+})
+
+test("defaultModelIDs includes providers with models and skips empty ones together", () => {
+  const providers = {
+    openagentic: { models: {} as Record<string, { id: string; options?: Record<string, unknown> }> },
+    other: { models: { "m1": { id: "m1", options: { default: true } } } },
+  }
+  expect(Provider.defaultModelIDs(providers)).toEqual({ other: "m1" })
+})
