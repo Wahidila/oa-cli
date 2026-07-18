@@ -2,7 +2,6 @@ import yargs from "yargs"
 import { hideBin } from "yargs/helpers"
 import { RunCommand } from "./cli/cmd/run"
 import { GenerateCommand } from "./cli/cmd/generate"
-import { ConsoleCommand } from "./cli/cmd/account"
 import { ProvidersCommand } from "./cli/cmd/providers"
 import { AgentCommand } from "./cli/cmd/agent"
 import { UpgradeCommand } from "./cli/cmd/upgrade"
@@ -84,7 +83,10 @@ const cli = yargs(args)
   .command(RunCommand)
   .command(GenerateCommand)
   .command(DebugCommand)
-  .command(ConsoleCommand)
+  // Fase 1 (OA-cli phone-home cut): the legacy opencode "console" account subsystem
+  // (console.opencode.ai) is dead weight now that OA-cli authenticates exclusively via
+  // OpenagenticAuth. The `console` command (login/logout/switch/orgs/open against
+  // console.opencode.ai) is intentionally not registered — see src/cli/cmd/account.ts.
   .command(ProvidersCommand)
   .command(AgentCommand)
   .command(UpgradeCommand)
