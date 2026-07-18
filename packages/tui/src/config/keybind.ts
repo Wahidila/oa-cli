@@ -114,7 +114,6 @@ export const Definitions = {
   session_quick_switch_9: keybind("<leader>9", "Switch to session in quick slot 9"),
 
   stash_delete: keybind("ctrl+d", "Delete stash entry"),
-  model_provider_list: keybind("ctrl+a", "Open provider list from model dialog"),
   model_favorite_toggle: keybind("ctrl+f", "Toggle model favorite status"),
   model_list: keybind("<leader>m", "List available models"),
   model_cycle_recent: keybind("f2", "Next recently used model"),
@@ -318,7 +317,6 @@ export const CommandMap = {
   session_quick_switch_8: "session.quick_switch.8",
   session_quick_switch_9: "session.quick_switch.9",
   stash_delete: "stash.delete",
-  model_provider_list: "model.dialog.provider",
   model_favorite_toggle: "model.dialog.favorite",
   model_list: "model.list",
   model_cycle_recent: "model.cycle_recent",
