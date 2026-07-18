@@ -1,6 +1,7 @@
 export * as OpenagenticAuth from "./openagentic"
 
 import open from "open"
+import { Effect } from "effect"
 import { makeRuntime } from "@opencode-ai/core/effect/runtime"
 import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
 import { Auth } from "@/auth"
@@ -268,4 +269,33 @@ export async function login(opts?: LoginOptions): Promise<LoginResult> {
 
 export async function logout(): Promise<void> {
   await authRuntime.runPromise((auth) => auth.remove(PROVIDER_ID))
+}
+
+// ---------------------------------------------------------------------------
+// Authentication check (env var CI escape hatch + stored credential)
+// ---------------------------------------------------------------------------
+
+/** Exact copy required by the design spec (§4) for non-interactive use without credentials. */
+export const NOT_LOGGED_IN_MESSAGE = "Belum login. Jalankan `oa-cli` dulu untuk login."
+
+/** CI/automation escape hatch: a non-empty OPENAGENTIC_API_KEY counts as logged in. */
+export function hasEnvKey(env: Record<string, string | undefined> = process.env): boolean {
+  return (env["OPENAGENTIC_API_KEY"] ?? "").trim().length > 0
+}
+
+/**
+ * Effect-native login check for effectCmd handlers. Never fails: an unreadable
+ * auth.json is treated as "not logged in" (the user can just log in again).
+ */
+export const isAuthenticatedEffect = Effect.fn("OpenagenticAuth.isAuthenticated")(function* () {
+  if (hasEnvKey()) return true
+  const auth = yield* Auth.Service
+  const info = yield* auth.get(PROVIDER_ID).pipe(Effect.orElseSucceed(() => undefined))
+  return info?.type === "api" && info.key.trim().length > 0
+})
+
+/** Promise wrapper for non-Effect callers (TUI boot / login gate). */
+export async function isAuthenticated(): Promise<boolean> {
+  const { AppRuntime } = await import("@/effect/app-runtime")
+  return AppRuntime.runPromise(isAuthenticatedEffect())
 }
