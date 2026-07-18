@@ -10,6 +10,7 @@ import { Heap } from "@/cli/heap"
 import { AppRuntime } from "@/effect/app-runtime"
 import { Effect } from "effect"
 import { disposeAllInstancesAndEmitGlobalDisposed } from "@/server/global-lifecycle"
+import { OpenagenticAuth } from "@/auth/openagentic"
 
 Heap.start()
 
@@ -68,6 +69,28 @@ export const rpc = {
         yield* disposeAllInstancesAndEmitGlobalDisposed({ swallowErrors: true })
       }),
     )
+  },
+  async authStatus(): Promise<{ authenticated: boolean }> {
+    // Reuse OpenagenticAuth.isAuthenticated() (env key -> stored credential) rather
+    // than re-deriving the check here — keeps this RPC in lockstep with the gate
+    // used by `oa-cli serve`/`oa-cli run` (src/cli/cmd/serve.ts, src/cli/cmd/run.ts).
+    const authenticated = await OpenagenticAuth.isAuthenticated().catch(() => false)
+    return { authenticated }
+  },
+  async authLogin(): Promise<
+    { ok: true; user: { email: string; name: string; plan: string } } | { ok: false; error: string }
+  > {
+    try {
+      const result = await OpenagenticAuth.login({
+        onUrl: (url) => Rpc.emit("auth.login.url", { url }),
+      })
+      // New key just landed in auth.json — invalidate config + dispose instances so
+      // the provider loader picks up the new credential on the next request.
+      await rpc.reload().catch(() => {})
+      return { ok: true, user: result.user }
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) }
+    }
   },
   async shutdown() {
     await InstanceRuntime.disposeAllInstances()
