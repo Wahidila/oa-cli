@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test"
 import { mkdir, writeFile } from "node:fs/promises"
 import path from "node:path"
-import type { TerminalColors } from "@opentui/core"
+import type { RGBA, TerminalColors } from "@opentui/core"
 import { DEFAULT_THEMES, addTheme, allThemes, hasTheme, resolveTheme, terminalMode } from "../src/theme"
 import { discoverThemes } from "../src/context/theme"
 import { tmpdir } from "./fixture/fixture"
@@ -78,4 +78,32 @@ test("custom theme precedence follows directory order", async () => {
   await writeFile(path.join(project, "themes", "custom.json"), JSON.stringify({ source: "project" }))
 
   await expect(discoverThemes([global, project])).resolves.toEqual({ custom: { source: "project" } })
+})
+
+function channelHex(color: RGBA) {
+  return (
+    "#" +
+    [color.r, color.g, color.b]
+      .map((channel) =>
+        Math.round(channel * 255)
+          .toString(16)
+          .padStart(2, "0"),
+      )
+      .join("")
+  )
+}
+
+test("oa-cli theme exists and resolves to the brand palette", () => {
+  const theme = DEFAULT_THEMES["oa-cli"]
+  expect(theme).toBeDefined()
+  const resolved = resolveTheme(theme, "dark")
+  expect(channelHex(resolved.primary)).toBe("#f97316")
+  expect(channelHex(resolved.secondary)).toBe("#fb923c")
+  expect(channelHex(resolved.accent)).toBe("#ff5600")
+  expect(channelHex(resolved.background)).toBe("#0c0a09")
+  expect(channelHex(resolved.backgroundPanel)).toBe("#1c1917")
+  expect(channelHex(resolved.error)).toBe("#ef4444")
+  expect(channelHex(resolved.success)).toBe("#10b981")
+  expect(channelHex(resolved.warning)).toBe("#f59e0b")
+  expect(channelHex(resolved.info)).toBe("#3b82f6")
 })
