@@ -582,11 +582,11 @@ function map(
 }
 
 const seed = {
-  highlight: RGBA.fromIndex(6, rgba("#38bdf8")),
-  muted: RGBA.fromIndex(8, rgba("#64748b")),
-  text: RGBA.defaultForeground(rgba("#f8fafc")),
-  panel: rgba("#0f172a"),
-  success: RGBA.fromIndex(2, rgba("#22c55e")),
+  highlight: RGBA.fromIndex(208, rgba("#f97316")),
+  muted: RGBA.fromIndex(248, rgba("#a8a29e")),
+  text: RGBA.defaultForeground(rgba("#ffffff")),
+  panel: rgba("#1c1917"),
+  success: RGBA.fromIndex(2, rgba("#10b981")),
   warning: RGBA.fromIndex(3, rgba("#f59e0b")),
   error: RGBA.fromIndex(1, rgba("#ef4444")),
 }
@@ -599,8 +599,8 @@ function tone(body: ColorInput, start?: ColorInput): Tone {
 }
 
 const fallbackSplashIndexed = Array.from({ length: 256 }, (_, index) => RGBA.fromIndex(index))
-const fallbackSplashLeft = RGBA.fromIndex(67)
-const fallbackSplashRight = RGBA.fromIndex(110)
+const fallbackSplashLeft = RGBA.fromIndex(208)
+const fallbackSplashRight = RGBA.fromIndex(231)
 
 export const RUN_THEME_FALLBACK: RunTheme = {
   background: RGBA.fromValues(0, 0, 0, 0),

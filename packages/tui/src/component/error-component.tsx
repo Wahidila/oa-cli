@@ -13,7 +13,7 @@ export function ErrorComponent(props: { error: Error; reset: () => void; mode?: 
   const clipboard = useClipboard()
   const [copied, setCopied] = createSignal(false)
 
-  // Safe fallback palette per mode (mirrors theme/assets/opencode.json) since the
+  // Safe fallback palette per mode (mirrors theme/assets/oa-cli.json) since the
   // theme context may be the thing that crashed.
   const isLight = props.mode === "light"
   const colors = isLight
@@ -29,15 +29,15 @@ export function ErrorComponent(props: { error: Error; reset: () => void; mode?: 
         success: "#3d9a57",
       }
     : {
-        bg: "#0a0a0a",
-        element: "#1e1e1e",
-        borderSubtle: "#3c3c3c",
-        text: "#eeeeee",
-        muted: "#808080",
-        primary: "#fab283",
-        onPrimary: "#0a0a0a",
-        error: "#e06c75",
-        success: "#7fd88f",
+        bg: "#0c0a09",
+        element: "#292524",
+        borderSubtle: "#44403c",
+        text: "#ffffff",
+        muted: "#a8a29e",
+        primary: "#f97316",
+        onPrimary: "#0c0a09",
+        error: "#ef4444",
+        success: "#10b981",
       }
 
   const message = props.error.message || "An unknown error occurred."
