@@ -75,7 +75,6 @@ export const Definitions = {
   diff_help: keybind("?", "Show more diff viewer shortcuts"),
 
   editor_open: keybind("<leader>e", "Open external editor"),
-  theme_list: keybind("<leader>t", "List available themes"),
   theme_switch_mode: keybind("none", "Switch between light and dark theme mode"),
   theme_mode_lock: keybind("none", "Lock or unlock theme mode"),
   sidebar_toggle: keybind("<leader>b", "Toggle sidebar"),
@@ -283,7 +282,6 @@ export const CommandMap = {
   diff_toggle_view: "diff.toggle_view",
   diff_help: "diff.help",
   editor_open: "prompt.editor",
-  theme_list: "theme.switch",
   theme_switch_mode: "theme.switch_mode",
   theme_mode_lock: "theme.mode.lock",
   sidebar_toggle: "session.sidebar.toggle",
