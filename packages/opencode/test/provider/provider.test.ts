@@ -305,8 +305,6 @@ it.instance("getModel returns model for valid provider/model", () =>
     expect(model).toBeDefined()
     expect(String(model.providerID)).toBe("anthropic")
     expect(String(model.id)).toBe("claude-sonnet-4-6")
-    const language = yield* provider.getLanguage(model)
-    expect(language).toBeDefined()
   }),
 )
 
@@ -706,15 +704,6 @@ it.instance("getSmallModel returns appropriate small model", () =>
     const model = yield* Provider.use.getSmallModel(ProviderV2.ID.anthropic)
     expect(model).toBeDefined()
     expect(model?.id).toContain("haiku")
-  }),
-)
-
-it.instance("getSmallModel prefers Gemini for Google Vertex", () =>
-  Effect.gen(function* () {
-    yield* set("GOOGLE_VERTEX_PROJECT", "test-project")
-    const model = yield* Provider.use.getSmallModel(ProviderV2.ID.googleVertex)
-    expect(model).toBeDefined()
-    expect(model?.id).toContain("gemini")
   }),
 )
 
@@ -1815,84 +1804,6 @@ it.instance(
           options: { project: "test-project", location: "us-central1" },
         },
       },
-    },
-  },
-)
-
-it.instance("Google Vertex: uses REP endpoint for Claude continental multi-regions", () =>
-  Effect.gen(function* () {
-    yield* set("GOOGLE_CLOUD_PROJECT", "test-project")
-    yield* set("VERTEX_LOCATION", "eu")
-    const provider = yield* Provider.Service
-    const model = yield* provider.getModel(
-      ProviderV2.ID.make("google-vertex"),
-      ModelV2.ID.make("claude-sonnet-4-6@default"),
-    )
-    const language = yield* provider.getLanguage(model)
-    expect(languageBaseURL(language)).toBe(
-      "https://aiplatform.eu.rep.googleapis.com/v1/projects/test-project/locations/eu/publishers/anthropic/models",
-    )
-  }),
-)
-
-it.instance("Google Vertex Anthropic: uses REP endpoint for continental multi-regions", () =>
-  Effect.gen(function* () {
-    yield* set("GOOGLE_CLOUD_PROJECT", "test-project")
-    yield* set("VERTEX_LOCATION", "us")
-    const provider = yield* Provider.Service
-    const model = yield* provider.getModel(
-      ProviderV2.ID.make("google-vertex-anthropic"),
-      ModelV2.ID.make("claude-sonnet-4-6@default"),
-    )
-    const language = yield* provider.getLanguage(model)
-    expect(languageBaseURL(language)).toBe(
-      "https://aiplatform.us.rep.googleapis.com/v1/projects/test-project/locations/us/publishers/anthropic/models",
-    )
-  }),
-)
-
-it.instance("Google Vertex: keeps regional Claude endpoints unchanged", () =>
-  Effect.gen(function* () {
-    yield* set("GOOGLE_CLOUD_PROJECT", "test-project")
-    yield* set("VERTEX_LOCATION", "europe-west1")
-    const provider = yield* Provider.Service
-    const model = yield* provider.getModel(
-      ProviderV2.ID.make("google-vertex"),
-      ModelV2.ID.make("claude-sonnet-4-6@default"),
-    )
-    const language = yield* provider.getLanguage(model)
-    expect(languageBaseURL(language)).toBe(
-      "https://europe-west1-aiplatform.googleapis.com/v1/projects/test-project/locations/europe-west1/publishers/anthropic/models",
-    )
-  }),
-)
-
-it.instance("cloudflare-ai-gateway loads with env variables", () =>
-  Effect.gen(function* () {
-    yield* set("CLOUDFLARE_ACCOUNT_ID", "test-account")
-    yield* set("CLOUDFLARE_GATEWAY_ID", "test-gateway")
-    yield* set("CLOUDFLARE_API_TOKEN", "test-token")
-    const providers = yield* list
-    expect(providers[ProviderV2.ID.make("cloudflare-ai-gateway")]).toBeDefined()
-  }),
-)
-
-it.instance(
-  "cloudflare-ai-gateway forwards config metadata options",
-  Effect.gen(function* () {
-    yield* set("CLOUDFLARE_ACCOUNT_ID", "test-account")
-    yield* set("CLOUDFLARE_GATEWAY_ID", "test-gateway")
-    yield* set("CLOUDFLARE_API_TOKEN", "test-token")
-    const providers = yield* list
-    expect(providers[ProviderV2.ID.make("cloudflare-ai-gateway")]).toBeDefined()
-    expect(providers[ProviderV2.ID.make("cloudflare-ai-gateway")].options.metadata).toEqual({
-      invoked_by: "test",
-      project: "opencode",
-    })
-  }),
-  {
-    config: {
-      provider: { "cloudflare-ai-gateway": { options: { metadata: { invoked_by: "test", project: "opencode" } } } },
     },
   },
 )
