@@ -54,6 +54,8 @@ import { DialogConsoleOrg } from "./component/dialog-console-org"
 import { ThemeProvider, useTheme } from "./context/theme"
 import { Home } from "./routes/home"
 import { Session } from "./routes/session"
+import { Login } from "./routes/login"
+import { isAuthFailure } from "./util/auth-error"
 import { PromptHistoryProvider } from "./component/prompt/history"
 import { FrecencyProvider } from "./component/prompt/frecency"
 import { PromptStashProvider } from "./component/prompt/stash"
@@ -388,6 +390,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
   const pluginRuntime = usePluginRuntime()
   const attention = createTuiAttention({ renderer, config: tuiConfig, kv })
   const clipboard = useClipboard()
+  const auth = useAuth()
 
   const api = createTuiApi(
     createTuiApiAdapters({
@@ -1023,6 +1026,15 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
     if (workspace !== project.workspace.current()) return
     const error = evt.properties.error
     if (error && typeof error === "object" && error.name === "MessageAbortedError") return
+    if (isAuthFailure(error)) {
+      auth.invalidate()
+      toast.show({
+        variant: "error",
+        message: "Sesi berakhir — silakan login ulang",
+        duration: 5000,
+      })
+      return
+    }
     const message = errorMessage(error)
 
     toast.show({
@@ -1112,23 +1124,28 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         <TimeToFirstDraw />
       </Show>
       <Show when={ready()}>
-        <box flexGrow={1} minHeight={0} flexDirection="column">
-          <Switch>
-            <Match when={route.data.type === "home"}>
-              <Home />
-            </Match>
-            <Match when={route.data.type === "session"}>
-              <Show when={route.data.type === "session" ? route.data.sessionID : undefined} keyed>
-                {(_) => <Session />}
-              </Show>
-            </Match>
-          </Switch>
-          {plugin()}
-        </box>
-        <box flexShrink={0}>
-          <pluginRuntime.Slot name="app_bottom" />
-        </box>
-        <pluginRuntime.Slot name="app" />
+        <Show when={auth.state() === "unauthenticated"}>
+          <Login />
+        </Show>
+        <Show when={auth.state() === "authenticated"}>
+          <box flexGrow={1} minHeight={0} flexDirection="column">
+            <Switch>
+              <Match when={route.data.type === "home"}>
+                <Home />
+              </Match>
+              <Match when={route.data.type === "session"}>
+                <Show when={route.data.type === "session" ? route.data.sessionID : undefined} keyed>
+                  {(_) => <Session />}
+                </Show>
+              </Match>
+            </Switch>
+            {plugin()}
+          </box>
+          <box flexShrink={0}>
+            <pluginRuntime.Slot name="app_bottom" />
+          </box>
+          <pluginRuntime.Slot name="app" />
+        </Show>
       </Show>
       <Show when={!startup.skipInitialLoading}>
         <StartupLoading ready={ready} />
