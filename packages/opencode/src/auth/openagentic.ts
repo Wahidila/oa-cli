@@ -191,14 +191,19 @@ export async function exchangeToken(input: {
     body: JSON.stringify({ code: input.code, code_verifier: input.verifier }),
   })
   if (!response.ok) {
-    const body = (await response.json().catch(() => undefined)) as { error?: string } | undefined
-    if (body?.error === "invalid_grant") {
+    const body = (await response.json().catch(() => undefined)) as
+      | { error?: string | { code?: string; message?: string } }
+      | undefined
+    // Design spec §7 documents this endpoint's error as a bare `400 invalid_grant`
+    // (OAuth-style `{ error: "invalid_grant" }`), while the rest of the API uses the
+    // structured `{ error: { code, message } }` envelope ("Kontrak error terstruktur").
+    // Accept both shapes so a backend/mock using either doesn't get misreported as a
+    // generic server_error.
+    const errorCode = typeof body?.error === "string" ? body.error : body?.error?.code
+    if (errorCode === "invalid_grant") {
       throw new LoginError("invalid_grant", "Authorization code kedaluwarsa atau sudah dipakai — coba login ulang.")
     }
-    throw new LoginError(
-      "server_error",
-      `Tukar token gagal (${response.status})${body?.error ? `: ${body.error}` : ""}`,
-    )
+    throw new LoginError("server_error", `Tukar token gagal (${response.status})${errorCode ? `: ${errorCode}` : ""}`)
   }
   const data = await response.json().catch(() => undefined)
   if (!isTokenResponse(data)) throw new LoginError("invalid_response", "Response /api/v1/cli/token tidak valid.")
