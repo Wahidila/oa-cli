@@ -641,8 +641,13 @@ export function toPublicInfo(provider: Info): Info {
   )
 }
 
-export function defaultModelIDs<T extends { models: Record<string, { id: string }> }>(providers: Record<string, T>) {
-  return mapValues(providers, (item) => sort(Object.values(item.models))[0].id)
+export function defaultModelIDs<
+  T extends { models: Record<string, { id: string; options?: Record<string, unknown> }> },
+>(providers: Record<string, T>) {
+  return mapValues(providers, (item) => {
+    const flagged = Object.values(item.models).find((model) => model.options?.["default"] === true)
+    return flagged?.id ?? sort(Object.values(item.models))[0].id
+  })
 }
 
 export class ModelNotFoundError extends Schema.TaggedErrorClass<ModelNotFoundError>()("ProviderModelNotFoundError", {
@@ -1521,6 +1526,8 @@ const layer = Layer.effect(
       const configured = Object.keys(cfg.provider ?? {})
       const provider = Object.values(s.providers).find((p) => configured.length === 0 || configured.includes(p.id))
       if (!provider) return yield* new NoProvidersError()
+      const flagged = Object.values(provider.models).find((m) => m.options?.["default"] === true)
+      if (flagged) return { providerID: provider.id, modelID: flagged.id }
       const [model] = sort(Object.values(provider.models))
       if (!model) return yield* new NoModelsError({ providerID: provider.id })
       return {

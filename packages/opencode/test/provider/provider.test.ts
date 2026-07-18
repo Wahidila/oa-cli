@@ -2013,3 +2013,13 @@ it.instance(
   }),
   { config: openagenticConfig },
 )
+
+it.instance(
+  "defaultModel resolves openagentic's server-flagged default",
+  Effect.gen(function* () {
+    const def = yield* Provider.use.defaultModel()
+    expect(String(def.providerID)).toBe("openagentic")
+    expect(String(def.modelID)).toBe("gpt-5-codex")
+  }),
+  { config: openagenticConfig },
+)
