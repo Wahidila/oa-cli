@@ -58,7 +58,6 @@ const TOP_LEVEL = [
   "stats",
   "export",
   "import",
-  "github",
   "pr",
   "session",
   "plugin",
@@ -80,8 +79,6 @@ const SUBCOMMANDS = [
   ["agent", "list"],
   ["session", "list"],
   ["session", "delete"],
-  ["github", "install"],
-  ["github", "run"],
   ["db", "path"],
 ] as const
 
@@ -129,7 +126,7 @@ describe("opencode CLI help-text snapshots", () => {
           // yargs writes --help to stderr, not stdout. Snapshotting stderr
           // means our test catches the help body; stdout for these commands
           // is expected to be empty.
-          expect(normalize(result.stderr)).toMatchSnapshot(`opencode ${argv.join(" ")} --help`)
+          expect(normalize(result.stderr)).toMatchSnapshot(`oa-cli ${argv.join(" ")} --help`)
         }
         if (failures.length > 0) {
           throw new Error(`Help text failed for:\n  ${failures.join("\n  ")}`)

@@ -1,21 +1,21 @@
 import { expect, test } from "bun:test"
 import { mkdir, writeFile } from "node:fs/promises"
 import path from "node:path"
-import type { TerminalColors } from "@opentui/core"
+import type { RGBA, TerminalColors } from "@opentui/core"
 import { DEFAULT_THEMES, addTheme, allThemes, hasTheme, resolveTheme, terminalMode } from "../src/theme"
 import { discoverThemes } from "../src/context/theme"
 import { tmpdir } from "./fixture/fixture"
 
 test("addTheme writes into module theme store", () => {
   const name = `plugin-theme-${Date.now()}`
-  expect(addTheme(name, DEFAULT_THEMES.opencode)).toBe(true)
+  expect(addTheme(name, DEFAULT_THEMES["oa-cli"])).toBe(true)
   expect(allThemes()[name]).toBeDefined()
 })
 
 test("addTheme keeps first theme for duplicate names", () => {
   const name = `plugin-theme-keep-${Date.now()}`
-  const one = structuredClone(DEFAULT_THEMES.opencode)
-  const two = structuredClone(DEFAULT_THEMES.opencode)
+  const one = structuredClone(DEFAULT_THEMES["oa-cli"])
+  const two = structuredClone(DEFAULT_THEMES["oa-cli"])
   one.theme.primary = "#101010"
   two.theme.primary = "#fefefe"
 
@@ -33,12 +33,12 @@ test("addTheme ignores entries without a theme object", () => {
 test("hasTheme checks theme presence", () => {
   const name = `plugin-theme-has-${Date.now()}`
   expect(hasTheme(name)).toBe(false)
-  expect(addTheme(name, DEFAULT_THEMES.opencode)).toBe(true)
+  expect(addTheme(name, DEFAULT_THEMES["oa-cli"])).toBe(true)
   expect(hasTheme(name)).toBe(true)
 })
 
 test("resolveTheme rejects circular color refs", () => {
-  const item = structuredClone(DEFAULT_THEMES.opencode)
+  const item = structuredClone(DEFAULT_THEMES["oa-cli"])
   item.defs = { ...item.defs, one: "two", two: "one" }
   item.theme.primary = "one"
   expect(() => resolveTheme(item, "dark")).toThrow("Circular color reference")
@@ -78,4 +78,32 @@ test("custom theme precedence follows directory order", async () => {
   await writeFile(path.join(project, "themes", "custom.json"), JSON.stringify({ source: "project" }))
 
   await expect(discoverThemes([global, project])).resolves.toEqual({ custom: { source: "project" } })
+})
+
+function channelHex(color: RGBA) {
+  return (
+    "#" +
+    [color.r, color.g, color.b]
+      .map((channel) =>
+        Math.round(channel * 255)
+          .toString(16)
+          .padStart(2, "0"),
+      )
+      .join("")
+  )
+}
+
+test("oa-cli theme exists and resolves to the brand palette", () => {
+  const theme = DEFAULT_THEMES["oa-cli"]
+  expect(theme).toBeDefined()
+  const resolved = resolveTheme(theme, "dark")
+  expect(channelHex(resolved.primary)).toBe("#f97316")
+  expect(channelHex(resolved.secondary)).toBe("#fb923c")
+  expect(channelHex(resolved.accent)).toBe("#ff5600")
+  expect(channelHex(resolved.background)).toBe("#0c0a09")
+  expect(channelHex(resolved.backgroundPanel)).toBe("#1c1917")
+  expect(channelHex(resolved.error)).toBe("#ef4444")
+  expect(channelHex(resolved.success)).toBe("#10b981")
+  expect(channelHex(resolved.warning)).toBe("#f59e0b")
+  expect(channelHex(resolved.info)).toBe("#3b82f6")
 })

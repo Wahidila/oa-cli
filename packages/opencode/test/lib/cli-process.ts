@@ -10,7 +10,7 @@
 //   - OPENCODE_TEST_HOME           : pins os.homedir() → tmpdir
 //   - OPENCODE_DISABLE_PROJECT_CONFIG : skip walking up for opencode.json
 //   - OPENCODE_PURE                : skip external plugin discovery + install
-//   - OPENCODE_DISABLE_AUTOUPDATE / AUTOCOMPACT / MODELS_FETCH : no background work
+//   - OPENCODE_DISABLE_AUTOUPDATE / AUTOCOMPACT       : no background work
 // Plus HOME / XDG_* pointing at the tmpdir for belt-and-suspenders isolation.
 //
 // Today only `opencode.run` is fully wired. The shape supports adding more
@@ -72,8 +72,9 @@ function isolatedEnv(home: string, configJson: string): Record<string, string> {
     OPENCODE_PURE: "1",
     OPENCODE_DISABLE_AUTOUPDATE: "1",
     OPENCODE_DISABLE_AUTOCOMPACT: "1",
-    OPENCODE_DISABLE_MODELS_FETCH: "1",
     OPENCODE_AUTH_CONTENT: "{}",
+    // Satisfies the OpenAgentic auth gate in run/serve without touching auth.json.
+    OPENAGENTIC_API_KEY: "oa-test-key",
   }
 }
 

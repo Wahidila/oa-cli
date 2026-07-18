@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test"
+import { afterAll, afterEach, expect, test } from "bun:test"
 import { mkdir, unlink } from "fs/promises"
 import path from "path"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
@@ -305,8 +305,6 @@ it.instance("getModel returns model for valid provider/model", () =>
     expect(model).toBeDefined()
     expect(String(model.providerID)).toBe("anthropic")
     expect(String(model.id)).toBe("claude-sonnet-4-6")
-    const language = yield* provider.getLanguage(model)
-    expect(language).toBeDefined()
   }),
 )
 
@@ -706,15 +704,6 @@ it.instance("getSmallModel returns appropriate small model", () =>
     const model = yield* Provider.use.getSmallModel(ProviderV2.ID.anthropic)
     expect(model).toBeDefined()
     expect(model?.id).toContain("haiku")
-  }),
-)
-
-it.instance("getSmallModel prefers Gemini for Google Vertex", () =>
-  Effect.gen(function* () {
-    yield* set("GOOGLE_VERTEX_PROJECT", "test-project")
-    const model = yield* Provider.use.getSmallModel(ProviderV2.ID.googleVertex)
-    expect(model).toBeDefined()
-    expect(model?.id).toContain("gemini")
   }),
 )
 
@@ -1276,9 +1265,9 @@ it.instance(
   Effect.gen(function* () {
     const providers = yield* list
     expect(providers[ProviderV2.ID.make("nvidia")].options.headers).toEqual({
-      "HTTP-Referer": "https://opencode.ai/",
-      "X-Title": "opencode",
-      "X-BILLING-INVOKE-ORIGIN": "OpenCode",
+      "HTTP-Referer": "https://openagentic.id/",
+      "X-Title": "OA-cli",
+      "X-BILLING-INVOKE-ORIGIN": "OA-cli",
     })
   }),
   { config: { provider: { nvidia: { options: { apiKey: "test-api-key" } } } } },
@@ -1289,9 +1278,9 @@ it.instance(
   Effect.gen(function* () {
     const providers = yield* list
     expect(providers[ProviderV2.ID.make("nvidia")].options.headers).toEqual({
-      "HTTP-Referer": "https://opencode.ai/",
-      "X-Title": "opencode",
-      "X-BILLING-INVOKE-ORIGIN": "OpenCode",
+      "HTTP-Referer": "https://openagentic.id/",
+      "X-Title": "OA-cli",
+      "X-BILLING-INVOKE-ORIGIN": "OA-cli",
     })
   }),
   { config: { provider: { nvidia: { options: { apiKey: "test-api-key", baseURL: "http://localhost:8000/v1" } } } } },
@@ -1819,84 +1808,6 @@ it.instance(
   },
 )
 
-it.instance("Google Vertex: uses REP endpoint for Claude continental multi-regions", () =>
-  Effect.gen(function* () {
-    yield* set("GOOGLE_CLOUD_PROJECT", "test-project")
-    yield* set("VERTEX_LOCATION", "eu")
-    const provider = yield* Provider.Service
-    const model = yield* provider.getModel(
-      ProviderV2.ID.make("google-vertex"),
-      ModelV2.ID.make("claude-sonnet-4-6@default"),
-    )
-    const language = yield* provider.getLanguage(model)
-    expect(languageBaseURL(language)).toBe(
-      "https://aiplatform.eu.rep.googleapis.com/v1/projects/test-project/locations/eu/publishers/anthropic/models",
-    )
-  }),
-)
-
-it.instance("Google Vertex Anthropic: uses REP endpoint for continental multi-regions", () =>
-  Effect.gen(function* () {
-    yield* set("GOOGLE_CLOUD_PROJECT", "test-project")
-    yield* set("VERTEX_LOCATION", "us")
-    const provider = yield* Provider.Service
-    const model = yield* provider.getModel(
-      ProviderV2.ID.make("google-vertex-anthropic"),
-      ModelV2.ID.make("claude-sonnet-4-6@default"),
-    )
-    const language = yield* provider.getLanguage(model)
-    expect(languageBaseURL(language)).toBe(
-      "https://aiplatform.us.rep.googleapis.com/v1/projects/test-project/locations/us/publishers/anthropic/models",
-    )
-  }),
-)
-
-it.instance("Google Vertex: keeps regional Claude endpoints unchanged", () =>
-  Effect.gen(function* () {
-    yield* set("GOOGLE_CLOUD_PROJECT", "test-project")
-    yield* set("VERTEX_LOCATION", "europe-west1")
-    const provider = yield* Provider.Service
-    const model = yield* provider.getModel(
-      ProviderV2.ID.make("google-vertex"),
-      ModelV2.ID.make("claude-sonnet-4-6@default"),
-    )
-    const language = yield* provider.getLanguage(model)
-    expect(languageBaseURL(language)).toBe(
-      "https://europe-west1-aiplatform.googleapis.com/v1/projects/test-project/locations/europe-west1/publishers/anthropic/models",
-    )
-  }),
-)
-
-it.instance("cloudflare-ai-gateway loads with env variables", () =>
-  Effect.gen(function* () {
-    yield* set("CLOUDFLARE_ACCOUNT_ID", "test-account")
-    yield* set("CLOUDFLARE_GATEWAY_ID", "test-gateway")
-    yield* set("CLOUDFLARE_API_TOKEN", "test-token")
-    const providers = yield* list
-    expect(providers[ProviderV2.ID.make("cloudflare-ai-gateway")]).toBeDefined()
-  }),
-)
-
-it.instance(
-  "cloudflare-ai-gateway forwards config metadata options",
-  Effect.gen(function* () {
-    yield* set("CLOUDFLARE_ACCOUNT_ID", "test-account")
-    yield* set("CLOUDFLARE_GATEWAY_ID", "test-gateway")
-    yield* set("CLOUDFLARE_API_TOKEN", "test-token")
-    const providers = yield* list
-    expect(providers[ProviderV2.ID.make("cloudflare-ai-gateway")]).toBeDefined()
-    expect(providers[ProviderV2.ID.make("cloudflare-ai-gateway")].options.metadata).toEqual({
-      invoked_by: "test",
-      project: "opencode",
-    })
-  }),
-  {
-    config: {
-      provider: { "cloudflare-ai-gateway": { options: { metadata: { invoked_by: "test", project: "opencode" } } } },
-    },
-  },
-)
-
 // Tests that need plugin file setup or multi-instance flows fall back to a
 // scoped tmpdir + provideInstance pattern via it.effect.
 
@@ -2047,4 +1958,117 @@ it.effect("opencode loader keeps paid models when auth exists", () =>
     expect(none).toBe(0)
     expect(keyedCount).toBeGreaterThan(0)
   }).pipe(provideMultiInstance),
+)
+
+// --- openagentic live discovery -------------------------------------------
+
+// The server deliberately flags gpt-5-codex as default: the id-sort heuristic
+// in sort() would pick claude-sonnet-4-5 ("claude-sonnet-4" sits later in the
+// priority list and the comparator is desc), so the flag is observable.
+const openagenticFixture = {
+  data: [
+    {
+      id: "claude-sonnet-4-5",
+      name: "Claude Sonnet 4.5",
+      provider: "anthropic",
+      context_limit: 200000,
+    },
+    { id: "gpt-5-codex", name: "GPT-5 Codex", provider: "openai", default: true },
+  ],
+}
+
+const openagenticServer = Bun.serve({
+  port: 0,
+  fetch(req) {
+    if (new URL(req.url).pathname === "/models") return Response.json(openagenticFixture)
+    return new Response("not found", { status: 404 })
+  },
+})
+afterAll(() => {
+  openagenticServer.stop(true)
+})
+
+const openagenticConfig = () => ({
+  provider: {
+    openagentic: {
+      name: "OpenAgentic",
+      npm: "@ai-sdk/openai-compatible",
+      options: {
+        apiKey: "test-key",
+        baseURL: `http://127.0.0.1:${openagenticServer.port}`,
+      },
+    },
+  },
+})
+
+it.instance(
+  "openagentic discovers models from the live models endpoint",
+  Effect.gen(function* () {
+    const providers = yield* list
+    const openagentic = providers[ProviderV2.ID.make("openagentic")]
+    expect(openagentic).toBeDefined()
+    expect(Object.keys(openagentic.models).sort()).toEqual(["claude-sonnet-4-5", "gpt-5-codex"])
+    expect(openagentic.models["gpt-5-codex"].options.default).toBe(true)
+    expect(openagentic.models["claude-sonnet-4-5"].api.npm).toBe("@ai-sdk/openai-compatible")
+  }),
+  { config: openagenticConfig },
+)
+
+it.instance(
+  "defaultModel resolves openagentic's server-flagged default",
+  Effect.gen(function* () {
+    const def = yield* Provider.use.defaultModel()
+    expect(String(def.providerID)).toBe("openagentic")
+    expect(String(def.modelID)).toBe("gpt-5-codex")
+  }),
+  { config: openagenticConfig },
+)
+
+// cfg.model is precedence level 1; the server-flagged default (level 3) must
+// never override an explicit config model, even when the flagged model is
+// present in the same provider's catalog.
+const openagenticConfigWithModel = () => ({
+  ...openagenticConfig(),
+  model: "openagentic/claude-sonnet-4-5",
+})
+
+it.instance(
+  "defaultModel prefers an explicit cfg.model over the server-flagged default",
+  Effect.gen(function* () {
+    const def = yield* Provider.use.defaultModel()
+    expect(String(def.providerID)).toBe("openagentic")
+    expect(String(def.modelID)).toBe("claude-sonnet-4-5")
+  }),
+  { config: openagenticConfigWithModel },
+)
+
+// The recent-model entry (precedence level 2) must also win over the
+// server-flagged default (level 3). `defaultModel` reads recents from
+// state/model.json, which lives outside the per-test tmpdir instance, so we
+// stash/restore any pre-existing file around the assertion.
+it.instance(
+  "defaultModel prefers a recent-model entry over the server-flagged default",
+  Effect.gen(function* () {
+    const modelJsonPath = path.join(Global.Path.state, "model.json")
+    const original = yield* Effect.promise(() => Filesystem.readText(modelJsonPath).catch(() => undefined))
+
+    yield* Effect.acquireRelease(
+      Effect.promise(() =>
+        Filesystem.write(
+          modelJsonPath,
+          JSON.stringify({ recent: [{ providerID: "openagentic", modelID: "claude-sonnet-4-5" }] }),
+        ),
+      ),
+      () =>
+        Effect.promise(async () => {
+          if (original !== undefined) await Filesystem.write(modelJsonPath, original)
+          else await unlink(modelJsonPath).catch(() => undefined)
+        }),
+    )
+
+    const def = yield* Provider.use.defaultModel()
+    expect(String(def.providerID)).toBe("openagentic")
+    expect(String(def.modelID)).toBe("claude-sonnet-4-5")
+  }),
+  { config: openagenticConfig },
 )

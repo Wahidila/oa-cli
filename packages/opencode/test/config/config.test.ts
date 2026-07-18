@@ -14,7 +14,7 @@ import { InstanceRef } from "../../src/effect/instance-ref"
 import type { InstanceContext } from "../../src/project/instance-context"
 import { Auth } from "../../src/auth"
 import { Account } from "../../src/account/account"
-import { AccessToken, AccountID, OrgID } from "../../src/account/schema"
+import { AccountID, OrgID } from "../../src/account/schema"
 import { FSUtil } from "@opencode-ai/core/fs-util"
 import { Env } from "../../src/env"
 import {
@@ -314,7 +314,7 @@ it.effect("creates global jsonc config with schema when no global configs exist"
       yield* Config.use.get().pipe(provideInstanceEffect(dir))
 
       const content = yield* FSUtil.use.readFileString(path.join(dir, "opencode.jsonc"))
-      expect(content).toContain('"$schema": "https://opencode.ai/config.json"')
+      expect(content).toContain('"$schema": "https://openagentic.id/config.json"')
     }).pipe(Effect.provide(testInstanceStoreLayer), Effect.provide(LayerNode.compile(CrossSpawnSpawner.node))),
   ),
 )
@@ -554,6 +554,13 @@ it.instance("handles file inclusion with replacement tokens", () =>
   }),
 )
 
+// Fase 1 (OA-cli phone-home cut): config.ts no longer auto-fetches org config/token from a
+// console account (console.opencode.ai) on startup — see the removed
+// `Config.loadActiveOrgConfig` block. This suite used to assert that an active console account's
+// remote config/token got merged in automatically; it now asserts the opposite: even with an
+// active console account present, `Account.config`/`Account.token` are never invoked and no
+// console-derived config is merged. The `config`/`token` mocks below die if called, which turns
+// any regression (auto-fetch path resurrected) into a hard test failure.
 const accountTokenIt = configIt({
   account: Layer.mock(Account.Service)({
     active: () =>
@@ -580,21 +587,18 @@ const accountTokenIt = configIt({
           },
         }),
       ),
-    config: () =>
-      Effect.succeed(
-        Option.some({
-          provider: { opencode: { options: { apiKey: "{env:OPENCODE_CONSOLE_TOKEN}" } } },
-        }),
-      ),
-    token: () => Effect.succeed(Option.some(AccessToken.make("st_test_token"))),
+    config: () => Effect.die("Account.config must not be called: console auto-fetch is disabled in Fase 1"),
+    token: () => Effect.die("Account.token must not be called: console auto-fetch is disabled in Fase 1"),
   }),
 })
 
-accountTokenIt.instance("resolves env templates in account config with account token", () =>
-  Effect.gen(function* () {
-    const config = yield* Config.use.get()
-    expect(config.provider?.["opencode"]?.options?.apiKey).toBe("st_test_token")
-  }),
+accountTokenIt.instance(
+  "does not auto-fetch or merge console account config even when a console account is active",
+  () =>
+    Effect.gen(function* () {
+      const config = yield* Config.use.get()
+      expect(config.provider?.["opencode"]).toBeUndefined()
+    }),
 )
 
 it.instance("validates config schema and throws on invalid fields", () =>

@@ -21,7 +21,6 @@ import { NvidiaPlugin } from "./provider/nvidia"
 import { OpenAIPlugin } from "./provider/openai"
 import { SnowflakeCortexPlugin } from "./provider/snowflake-cortex"
 import { OpenAICompatiblePlugin } from "./provider/openai-compatible"
-import { OpencodePlugin } from "./provider/opencode"
 import { OpenRouterPlugin } from "./provider/openrouter"
 import { PerplexityPlugin } from "./provider/perplexity"
 import { SapAICorePlugin } from "./provider/sap-ai-core"
@@ -55,7 +54,13 @@ export const ProviderPlugins: PluginInternal.Plugin<PluginInternal.Requirements 
   LLMGatewayPlugin,
   MistralPlugin,
   NvidiaPlugin,
-  OpencodePlugin,
+  // OpencodePlugin is intentionally NOT registered here (Fase 1, OA-cli phone-home cut): its
+  // effect auto-fetches `${server}/api/config` (default https://console.opencode.ai) on boot
+  // whenever a stored "opencode" integration credential exists (e.g. carried over from a
+  // stock-opencode data dir). Registering it would make that fetch happen automatically on
+  // every instance boot via PluginInternal.boot. The module itself is kept (packages/core/src/
+  // plugin/provider/opencode.ts) for Fase-2 pruning and is still covered by
+  // test/plugin/provider-opencode.test.ts, which imports it directly.
   SnowflakeCortexPlugin,
   OpenAICompatiblePlugin,
   OpenAIPlugin,

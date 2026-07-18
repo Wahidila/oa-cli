@@ -19,7 +19,8 @@ import { pathToFileURL } from "url"
 import { open } from "node:fs/promises"
 import { Effect } from "effect"
 import { UI } from "../ui"
-import { effectCmd } from "../effect-cmd"
+import { effectCmd, fail } from "../effect-cmd"
+import { OpenagenticAuth } from "@/auth/openagentic"
 import { EOL } from "os"
 import { Filesystem } from "@/util/filesystem"
 import { createOpencodeClient, type OpencodeClient, type ToolPart } from "@opencode-ai/sdk/v2"
@@ -125,7 +126,7 @@ async function toolError(part: ToolPart) {
 
 export const RunCommand = effectCmd({
   command: "run [message..]",
-  describe: "run opencode with a message",
+  describe: "run OA-cli with a message",
   // --attach connects to a remote server (no local instance needed); the
   // default path runs an in-process server and needs the project instance.
   instance: (args) => !args.attach,
@@ -189,7 +190,7 @@ export const RunCommand = effectCmd({
       })
       .option("attach", {
         type: "string",
-        describe: "attach to a running opencode server (e.g., http://localhost:4096)",
+        describe: "attach to a running OA-cli server (e.g., http://localhost:4096)",
       })
       .option("password", {
         alias: ["p"],
@@ -261,6 +262,13 @@ export const RunCommand = effectCmd({
         describe: "enable direct interactive demo slash commands; pass one as the message to run it immediately",
       }),
   handler: Effect.fn("Cli.run")(function* (args) {
+    // Auth gate: non-interactive use requires an OpenAgentic credential
+    // (auth.json key "openagentic") or the OPENAGENTIC_API_KEY escape hatch.
+    // --attach talks to a remote server that owns its own credentials.
+    if (!args.attach) {
+      const authed = yield* OpenagenticAuth.isAuthenticatedEffect()
+      if (!authed) return yield* fail(OpenagenticAuth.NOT_LOGGED_IN_MESSAGE)
+    }
     const { Agent } = yield* Effect.promise(() => import("@/agent/agent"))
     const { RuntimeFlags } = yield* Effect.promise(() => import("@/effect/runtime-flags"))
     const { InstanceRef } = yield* Effect.promise(() => import("@/effect/instance-ref"))

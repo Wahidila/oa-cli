@@ -71,12 +71,12 @@ export function resolveThreadDirectory(project?: string, envPWD = process.env.PW
 
 export const TuiThreadCommand = cmd({
   command: "$0 [project]",
-  describe: "start opencode tui",
+  describe: "start OA-cli tui",
   builder: (yargs) =>
     withNetworkOptions(yargs)
       .positional("project", {
         type: "string",
-        describe: "path to start opencode in",
+        describe: "path to start OA-cli in",
       })
       .option("model", {
         type: "string",
@@ -284,6 +284,20 @@ export const TuiThreadCommand = cmd({
             fetch: transport.fetch,
             headers: transport.headers,
             events: transport.events,
+            auth: {
+              // async wrapper: Rpc.client.call mengembalikan Promise<ReturnType<method>>
+              // (nested Promise untuk method async) — async arrow meng-collapse-nya
+              // via Awaited sehingga cocok dengan TuiAuth.status.
+              status: async () => client.call("authStatus", undefined),
+              login: async (onUrl: (url: string) => void) => {
+                const unsubscribe = client.on<{ url: string }>("auth.login.url", (data) => onUrl(data.url))
+                try {
+                  return await client.call("authLogin", undefined)
+                } finally {
+                  unsubscribe()
+                }
+              },
+            },
             args: {
               continue: args.continue,
               sessionID: args.session,

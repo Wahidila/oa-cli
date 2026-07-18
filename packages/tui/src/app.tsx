@@ -38,13 +38,13 @@ import { SyncProvider, useSync } from "./context/sync"
 import { DataProvider } from "./context/data"
 import { LocationProvider } from "./context/location"
 import { LocalProvider, useLocal } from "./context/local"
+import { AuthProvider, useAuth, type TuiAuth } from "./context/auth"
 import { PermissionProvider } from "./context/permission"
 import { DialogModel } from "./component/dialog-model"
 import { useConnected } from "./component/use-connected"
 import { DialogMcp } from "./component/dialog-mcp"
 import { DialogStatus } from "./component/dialog-status"
 import { DialogDebug } from "./component/dialog-debug"
-import { DialogThemeList } from "./component/dialog-theme-list"
 import { DialogHelp } from "./ui/dialog-help"
 import { DialogAgent } from "./component/dialog-agent"
 import { DialogSessionList } from "./component/dialog-session-list"
@@ -53,6 +53,9 @@ import { DialogConsoleOrg } from "./component/dialog-console-org"
 import { ThemeProvider, useTheme } from "./context/theme"
 import { Home } from "./routes/home"
 import { Session } from "./routes/session"
+import { Login } from "./routes/login"
+import { isAuthFailure } from "./util/auth-error"
+import { friendlyProviderError } from "./util/provider-error"
 import { PromptHistoryProvider } from "./component/prompt/history"
 import { FrecencyProvider } from "./component/prompt/frecency"
 import { PromptStashProvider } from "./component/prompt/stash"
@@ -120,7 +123,6 @@ const appBindingCommands = [
   "console.org.switch",
   "opencode.status",
   "opencode.debug",
-  "theme.switch",
   "theme.switch_mode",
   "theme.mode.lock",
   "help.show",
@@ -149,6 +151,7 @@ export type TuiInput = {
   headers?: RequestInit["headers"]
   events?: EventSource
   pluginHost: TuiPluginHost
+  auth?: TuiAuth
 }
 
 function errorMessage(error: unknown) {
@@ -315,10 +318,12 @@ export const run = Effect.fn("Tui.run")(function* (input: TuiInput) {
                                                               <PromptRefProvider>
                                                                 <EditorContextProvider>
                                                                   <LocationProvider>
-                                                                    <App
-                                                                      onSnapshot={input.onSnapshot}
-                                                                      pluginHost={input.pluginHost}
-                                                                    />
+                                                                    <AuthProvider auth={input.auth}>
+                                                                      <App
+                                                                        onSnapshot={input.onSnapshot}
+                                                                        pluginHost={input.pluginHost}
+                                                                      />
+                                                                    </AuthProvider>
                                                                   </LocationProvider>
                                                                 </EditorContextProvider>
                                                               </PromptRefProvider>
@@ -384,6 +389,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
   const pluginRuntime = usePluginRuntime()
   const attention = createTuiAttention({ renderer, config: tuiConfig, kv })
   const clipboard = useClipboard()
+  const auth = useAuth()
 
   const api = createTuiApi(
     createTuiApiAdapters({
@@ -454,24 +460,24 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
     if (!terminalTitleEnabled() || Flag.OPENCODE_DISABLE_TERMINAL_TITLE) return
 
     if (route.data.type === "home") {
-      renderer.setTerminalTitle("OpenCode")
+      renderer.setTerminalTitle("OA-cli")
       return
     }
 
     if (route.data.type === "session") {
       const session = sync.session.get(route.data.sessionID)
       if (!session || isDefaultTitle(session.title)) {
-        renderer.setTerminalTitle("OpenCode")
+        renderer.setTerminalTitle("OA-cli")
         return
       }
 
       const title = session.title.length > 40 ? session.title.slice(0, 37) + "..." : session.title
-      renderer.setTerminalTitle(`OC | ${title}`)
+      renderer.setTerminalTitle(`OA | ${title}`)
       return
     }
 
     if (route.data.type === "plugin") {
-      renderer.setTerminalTitle(`OC | ${route.data.id}`)
+      renderer.setTerminalTitle(`OA | ${route.data.id}`)
     }
   })
 
@@ -779,15 +785,6 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         category: "System",
       },
       {
-        name: "theme.switch",
-        title: "Switch theme",
-        slashName: "themes",
-        run: () => {
-          dialog.replace(() => <DialogThemeList />)
-        },
-        category: "System",
-      },
-      {
         name: "theme.switch_mode",
         title: mode() === "dark" ? "Switch to light mode" : "Switch to dark mode",
         run: () => {
@@ -1019,6 +1016,24 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
     if (workspace !== project.workspace.current()) return
     const error = evt.properties.error
     if (error && typeof error === "object" && error.name === "MessageAbortedError") return
+    if (isAuthFailure(error)) {
+      auth.invalidate()
+      toast.show({
+        variant: "error",
+        message: "Sesi berakhir — silakan login ulang",
+        duration: 5000,
+      })
+      return
+    }
+    const providerMessage = friendlyProviderError(error)
+    if (providerMessage) {
+      toast.show({
+        variant: "error",
+        message: providerMessage,
+        duration: 5000,
+      })
+      return
+    }
     const message = errorMessage(error)
 
     toast.show({
@@ -1108,23 +1123,28 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         <TimeToFirstDraw />
       </Show>
       <Show when={ready()}>
-        <box flexGrow={1} minHeight={0} flexDirection="column">
-          <Switch>
-            <Match when={route.data.type === "home"}>
-              <Home />
-            </Match>
-            <Match when={route.data.type === "session"}>
-              <Show when={route.data.type === "session" ? route.data.sessionID : undefined} keyed>
-                {(_) => <Session />}
-              </Show>
-            </Match>
-          </Switch>
-          {plugin()}
-        </box>
-        <box flexShrink={0}>
-          <pluginRuntime.Slot name="app_bottom" />
-        </box>
-        <pluginRuntime.Slot name="app" />
+        <Show when={auth.state() === "unauthenticated"}>
+          <Login />
+        </Show>
+        <Show when={auth.state() === "authenticated"}>
+          <box flexGrow={1} minHeight={0} flexDirection="column">
+            <Switch>
+              <Match when={route.data.type === "home"}>
+                <Home />
+              </Match>
+              <Match when={route.data.type === "session"}>
+                <Show when={route.data.type === "session" ? route.data.sessionID : undefined} keyed>
+                  {(_) => <Session />}
+                </Show>
+              </Match>
+            </Switch>
+            {plugin()}
+          </box>
+          <box flexShrink={0}>
+            <pluginRuntime.Slot name="app_bottom" />
+          </box>
+          <pluginRuntime.Slot name="app" />
+        </Show>
       </Show>
       <Show when={!startup.skipInitialLoading}>
         <StartupLoading ready={ready} />

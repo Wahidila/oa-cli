@@ -12,10 +12,12 @@ const dir = path.resolve(__dirname, "..")
 
 process.chdir(dir)
 
-const generated = await import("./generate.ts")
-
 import { Script } from "@opencode-ai/script"
 import pkg from "../package.json"
+
+// Artifact/binary name for OA-cli. Decoupled from pkg.name ("opencode") so the
+// workspace dependency graph is untouched in Fase 1.
+const app = "oa-cli"
 
 const singleFlag = process.argv.includes("--single")
 const baselineFlag = process.argv.includes("--baseline")
@@ -144,7 +146,7 @@ if (!skipInstall) {
 }
 for (const item of targets) {
   const name = [
-    pkg.name,
+    app,
     // changing to win32 flags npm for some reason
     item.os === "win32" ? "windows" : item.os,
     item.arch,
@@ -179,9 +181,9 @@ for (const item of targets) {
       autoloadDotenv: false,
       autoloadTsconfig: true,
       autoloadPackageJson: true,
-      target: name.replace(pkg.name, "bun") as any,
-      outfile: `dist/${name}/bin/opencode`,
-      execArgv: [`--user-agent=opencode/${Script.version}`, "--use-system-ca", "--"],
+      target: name.replace(app, "bun") as any,
+      outfile: `dist/${name}/bin/oa-cli`,
+      execArgv: [`--user-agent=oa-cli/${Script.version}`, "--use-system-ca", "--"],
       windows: {},
     },
     files: embeddedFileMap ? { "opencode-web-ui.gen.ts": embeddedFileMap } : {},
@@ -189,7 +191,6 @@ for (const item of targets) {
     define: {
       FFF_LIBC: JSON.stringify(item.abi === "musl" ? "musl" : "gnu"),
       OPENCODE_VERSION: `'${Script.version}'`,
-      OPENCODE_MODELS_DEV: generated.modelsData,
       OTUI_TREE_SITTER_WORKER_PATH: bunfsRoot + workerRelativePath,
       OPENCODE_WORKER_PATH: workerPath,
       OPENCODE_CHANNEL: `'${Script.channel}'`,
@@ -200,7 +201,7 @@ for (const item of targets) {
 
   // Smoke test: only run if binary is for current platform
   if (item.os === process.platform && item.arch === process.arch && !item.abi) {
-    const binaryPath = `dist/${name}/bin/opencode`
+    const binaryPath = `dist/${name}/bin/oa-cli`
     console.log(`Running smoke test: ${binaryPath} --version`)
     try {
       const versionOutput = await $`${binaryPath} --version`.text()

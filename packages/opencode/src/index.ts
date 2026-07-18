@@ -2,7 +2,6 @@ import yargs from "yargs"
 import { hideBin } from "yargs/helpers"
 import { RunCommand } from "./cli/cmd/run"
 import { GenerateCommand } from "./cli/cmd/generate"
-import { ConsoleCommand } from "./cli/cmd/account"
 import { ProvidersCommand } from "./cli/cmd/providers"
 import { AgentCommand } from "./cli/cmd/agent"
 import { UpgradeCommand } from "./cli/cmd/upgrade"
@@ -15,7 +14,6 @@ import { ServeCommand } from "./cli/cmd/serve"
 import { DebugCommand } from "./cli/cmd/debug"
 import { StatsCommand } from "./cli/cmd/stats"
 import { McpCommand } from "./cli/cmd/mcp"
-import { GithubCommand } from "./cli/cmd/github"
 import { ExportCommand } from "./cli/cmd/export"
 import { ImportCommand } from "./cli/cmd/import"
 import { AttachCommand } from "./cli/cmd/attach"
@@ -34,7 +32,7 @@ const args = hideBin(process.argv)
 
 function show(out: string) {
   const text = out.trimStart()
-  if (!text.startsWith("opencode ")) {
+  if (!text.startsWith("oa-cli ")) {
     process.stderr.write(UI.logo() + EOL + EOL)
     process.stderr.write(text + EOL)
     return
@@ -44,7 +42,7 @@ function show(out: string) {
 
 const cli = yargs(args)
   .parserConfiguration({ "populate--": true })
-  .scriptName("opencode")
+  .scriptName("oa-cli")
   .wrap(100)
   .help("help", "show help")
   .alias("help", "h")
@@ -85,7 +83,10 @@ const cli = yargs(args)
   .command(RunCommand)
   .command(GenerateCommand)
   .command(DebugCommand)
-  .command(ConsoleCommand)
+  // Fase 1 (OA-cli phone-home cut): the legacy opencode "console" account subsystem
+  // (console.opencode.ai) is dead weight now that OA-cli authenticates exclusively via
+  // OpenagenticAuth. The `console` command (login/logout/switch/orgs/open against
+  // console.opencode.ai) is intentionally not registered — see src/cli/cmd/account.ts.
   .command(ProvidersCommand)
   .command(AgentCommand)
   .command(UpgradeCommand)
@@ -96,7 +97,6 @@ const cli = yargs(args)
   .command(StatsCommand)
   .command(ExportCommand)
   .command(ImportCommand)
-  .command(GithubCommand)
   .command(PrCommand)
   .command(SessionCommand)
   .command(PluginCommand)

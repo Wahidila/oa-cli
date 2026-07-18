@@ -177,7 +177,6 @@ const layer = Layer.effect(
   Effect.gen(function* () {
     const fs = yield* FSUtil.Service
     const authSvc = yield* Auth.Service
-    const accountSvc = yield* Account.Service
     const env = yield* Env.Service
     const npmSvc = yield* Npm.Service
     const http = yield* HttpClient.HttpClient
@@ -229,8 +228,8 @@ const layer = Layer.effect(
 
       yield* Effect.promise(() => resolveLoadedPlugins(data, options.path))
       if (!data.$schema) {
-        data.$schema = "https://opencode.ai/config.json"
-        const updated = text.replace(/^\s*\{/, '{\n  "$schema": "https://opencode.ai/config.json",')
+        data.$schema = "https://openagentic.id/config.json"
+        const updated = text.replace(/^\s*\{/, '{\n  "$schema": "https://openagentic.id/config.json",')
         yield* fs.writeFileString(options.path, updated).pipe(Effect.catch(() => Effect.void))
       }
       return data
@@ -251,7 +250,7 @@ const layer = Layer.effect(
         const file = globalConfigFile()
         if (!existsSync(file)) {
           yield* fs
-            .writeWithDirs(file, JSON.stringify({ $schema: "https://opencode.ai/config.json" }, null, 2))
+            .writeWithDirs(file, JSON.stringify({ $schema: "https://openagentic.id/config.json" }, null, 2))
             .pipe(Effect.catch(() => Effect.void))
         }
       }
@@ -266,7 +265,7 @@ const layer = Layer.effect(
             .then(async (mod) => {
               const { provider, model, ...rest } = mod.default
               if (provider && model) result.model = `${provider}/${model}`
-              result["$schema"] = "https://opencode.ai/config.json"
+              result["$schema"] = "https://openagentic.id/config.json"
               result = mergeConfig(result, rest)
               await fsNode.writeFile(path.join(Global.Path.config, "config.json"), JSON.stringify(result, null, 2))
               await fsNode.unlink(legacy)
@@ -380,7 +379,7 @@ const layer = Layer.effect(
                 })
               : {}
             const remoteConfig = mergeConfig(isRecord(wellknown.config) ? wellknown.config : {}, fetchedConfig)
-            if (!remoteConfig.$schema) remoteConfig.$schema = "https://opencode.ai/config.json"
+            if (!remoteConfig.$schema) remoteConfig.$schema = "https://openagentic.id/config.json"
             const source = wellknownURL
             const next = yield* loadConfig(
               JSON.stringify(remoteConfig),
@@ -475,43 +474,15 @@ const layer = Layer.effect(
           yield* Effect.logDebug("loaded custom config from OPENCODE_CONFIG_CONTENT")
         }
 
-        const activeAccount = Option.getOrUndefined(
-          yield* accountSvc.active().pipe(Effect.catch(() => Effect.succeed(Option.none()))),
-        )
-        if (activeAccount?.active_org_id) {
-          const accountID = activeAccount.id
-          const orgID = activeAccount.active_org_id
-          const url = activeAccount.url
-          yield* Effect.gen(function* () {
-            const [configOpt, tokenOpt] = yield* Effect.all(
-              [accountSvc.config(accountID, orgID), accountSvc.token(accountID)],
-              { concurrency: 2 },
-            )
-            if (Option.isSome(tokenOpt)) {
-              process.env["OPENCODE_CONSOLE_TOKEN"] = tokenOpt.value
-              yield* env.set("OPENCODE_CONSOLE_TOKEN", tokenOpt.value)
-            }
-
-            if (Option.isSome(configOpt)) {
-              const source = `${url}/api/config`
-              const next = yield* loadConfig(JSON.stringify(configOpt.value), {
-                dir: path.dirname(source),
-                source,
-              })
-              for (const providerID of Object.keys(next.provider ?? {})) {
-                consoleManagedProviders.add(providerID)
-              }
-              yield* merge(source, next, "global")
-            }
-          }).pipe(
-            Effect.withSpan("Config.loadActiveOrgConfig"),
-            Effect.catch((err) =>
-              Effect.logDebug("failed to fetch remote account config", {
-                error: err instanceof Error ? err.message : String(err),
-              }),
-            ),
-          )
-        }
+        // Fase 1 (OA-cli phone-home cut): this used to auto-fetch org config (GET
+        // `{account.url}/api/config`) and a console token (POST `{account.url}/auth/device/token`)
+        // from the legacy opencode "console" account subsystem (console.opencode.ai) on
+        // essentially every startup whenever a console account with an active org was present in
+        // local storage. OA-cli authenticates exclusively via OpenagenticAuth, so that account
+        // system is dead weight and this automatic network call is intentionally disabled — no
+        // startup request to console.opencode.ai may happen. `consoleManagedProviders` therefore
+        // stays empty and `OPENCODE_CONSOLE_TOKEN` is never set here; the rest of config loading
+        // is unaffected.
 
         const managedDir = ConfigManaged.managedConfigDir()
         if (existsSync(managedDir)) {

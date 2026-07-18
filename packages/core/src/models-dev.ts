@@ -1,21 +1,11 @@
-import path from "path"
-import { Context, Duration, Effect, Layer, Option, Schedule, Schema } from "effect"
-import { FetchHttpClient, HttpClient, HttpClientRequest } from "effect/unstable/http"
+import { Context, Effect, Layer, Schema } from "effect"
 import { ModelsDev } from "@opencode-ai/schema/models-dev"
-import { Global } from "./global"
 import { Flag } from "./flag/flag"
-import { Flock } from "./util/flock"
-import { Hash } from "./util/hash"
 import { FSUtil } from "./fs-util"
-import { InstallationChannel, InstallationVersion } from "./installation/version"
-import { EventV2 } from "./event"
 import { makeGlobalNode } from "./effect/app-node"
-import { httpClient } from "./effect/app-node-platform"
 
 export const CatalogModelStatus = Schema.Literals(["alpha", "beta", "deprecated"])
 export type CatalogModelStatus = typeof CatalogModelStatus.Type
-
-const USER_AGENT = `opencode/${InstallationChannel}/${InstallationVersion}/${Flag.OPENCODE_CLIENT}`
 
 const CostTier = Schema.Struct({
   input: Schema.Finite,
@@ -127,7 +117,22 @@ export type Provider = Schema.Schema.Type<typeof Provider>
 
 export const Event = ModelsDev.Event
 
-declare const OPENCODE_MODELS_DEV: Record<string, Provider> | undefined
+/**
+ * The locked provider catalog. OA-cli talks to exactly one provider —
+ * openagentic. Models are intentionally empty here: the model list comes
+ * from live discovery against https://openagentic.id/api/v1/models with the
+ * user's API key, not from a static catalog.
+ */
+export const CATALOG: Record<string, Provider> = {
+  openagentic: {
+    id: "openagentic",
+    name: "OpenAgentic",
+    api: "https://openagentic.id/api/v1",
+    npm: "@ai-sdk/openai-compatible",
+    env: ["OPENAGENTIC_API_KEY"],
+    models: {},
+  },
+}
 
 export interface Interface {
   readonly get: () => Effect.Effect<Record<string, Provider>>
@@ -140,121 +145,36 @@ const layer = Layer.effect(
   Service,
   Effect.gen(function* () {
     const fs = yield* FSUtil.Service
-    const events = yield* EventV2.Service
-    const http = HttpClient.filterStatusOk(
-      (yield* HttpClient.HttpClient).pipe(
-        HttpClient.retryTransient({
-          retryOn: "errors-and-responses",
-          times: 2,
-          schedule: Schedule.exponential(200).pipe(Schedule.jittered),
-        }),
-      ),
-    )
 
-    const source = Flag.OPENCODE_MODELS_URL || "https://models.dev"
-    const filepath = path.join(
-      Global.Path.cache,
-      source === "https://models.dev" ? "models.json" : `models-${Hash.fast(source)}.json`,
-    )
-    const ttl = Duration.minutes(5)
-    const lockKey = `models-dev:${filepath}`
-
-    const fresh = Effect.fnUntraced(function* () {
-      const stat = yield* fs.stat(filepath).pipe(Effect.catch(() => Effect.succeed(undefined)))
-      if (!stat) return false
-      const mtime = Option.getOrElse(stat.mtime, () => new Date(0)).getTime()
-      return Date.now() - mtime < Duration.toMillis(ttl)
-    })
-
-    const fetchApi = Effect.fn("ModelsDev.fetchApi")(function* () {
-      return yield* HttpClientRequest.get(`${source}/api.json`).pipe(
-        HttpClientRequest.setHeader("User-Agent", USER_AGENT),
-        http.execute,
-        Effect.flatMap((res) => res.text),
-        Effect.timeout("10 seconds"),
-      )
-    })
-
-    const loadFromDisk = fs.readJson(Flag.OPENCODE_MODELS_PATH ?? filepath).pipe(
-      Effect.catch((error) => {
-        if (
-          Flag.OPENCODE_MODELS_PATH === undefined &&
-          error._tag === "FileSystemError" &&
-          error.method === "readJson"
-        ) {
-          return fs.remove(filepath, { force: true }).pipe(Effect.ignore, Effect.as(undefined))
-        }
-        return Effect.succeed(undefined)
-      }),
-      Effect.map((v) => v as Record<string, Provider> | undefined),
-    )
-
-    const loadSnapshot = Effect.sync(() =>
-      typeof OPENCODE_MODELS_DEV === "undefined" ? undefined : OPENCODE_MODELS_DEV,
-    )
-
-    const fetchAndWrite = Effect.fn("ModelsDev.fetchAndWrite")(function* () {
-      const text = yield* fetchApi()
-      const tempfile = `${filepath}.${process.pid}.${Date.now()}.tmp`
-      yield* fs.writeWithDirs(tempfile, text).pipe(
-        Effect.andThen(fs.rename(tempfile, filepath)),
-        Effect.catch((error) =>
-          Effect.gen(function* () {
-            yield* fs.remove(tempfile, { force: true }).pipe(Effect.ignore)
-            return yield* Effect.fail(error)
-          }),
-        ),
-      )
-      return text
-    })
-
+    // Flag.OPENCODE_MODELS_PATH is a test/dev-only escape hatch: the test
+    // preloads point it at a fixture file so suites can exercise arbitrary
+    // catalogs without the network. When unset (all production runs), the
+    // catalog is the hardcoded single-provider CATALOG above. There is no
+    // network fetch, no background refresh, and no on-disk cache.
     const populate = Effect.gen(function* () {
-      const fromDisk = yield* loadFromDisk
-      if (fromDisk) return fromDisk
-      const snapshot = yield* loadSnapshot
-      if (snapshot) return snapshot
-      if (Flag.OPENCODE_DISABLE_MODELS_FETCH) return {}
-      // Flock is cross-process: concurrent opencode CLIs can race on this cache file.
-      const text = yield* Effect.scoped(
-        Effect.gen(function* () {
-          yield* Flock.effect(lockKey)
-          return yield* fetchAndWrite()
-        }),
-      )
-      return JSON.parse(text) as Record<string, Provider>
-    }).pipe(Effect.withSpan("ModelsDev.populate"), Effect.orDie)
-
-    const [cachedGet, invalidate] = yield* Effect.cachedInvalidateWithTTL(populate, Duration.infinity)
-
-    const get = (): Effect.Effect<Record<string, Provider>> => cachedGet
-
-    const refresh = Effect.fn("ModelsDev.refresh")(function* (force = false) {
-      if (!force && (yield* fresh())) return
-      yield* Effect.scoped(
-        Effect.gen(function* () {
-          yield* Flock.effect(lockKey)
-          // Re-check under the lock: another process may have refreshed between
-          // our outer check and lock acquisition.
-          if (!force && (yield* fresh())) return
-          yield* fetchAndWrite()
-          yield* invalidate
-          yield* events.publish(Event.Refreshed, {})
-        }),
-      ).pipe(
-        Effect.tapCause((cause) => Effect.logError("Failed to fetch models.dev", { cause: cause })),
-        Effect.ignore,
-      )
+      const override = Flag.OPENCODE_MODELS_PATH
+      if (override) {
+        const fromDisk = yield* fs.readJson(override).pipe(
+          Effect.map((v) => v as Record<string, Provider> | undefined),
+          Effect.catch(() => Effect.succeed(undefined)),
+        )
+        if (fromDisk) return fromDisk
+      }
+      return CATALOG
     })
 
-    if (!Flag.OPENCODE_DISABLE_MODELS_FETCH && !process.argv.includes("--get-yargs-completions")) {
-      // Schedule.spaced runs the effect once, then waits between completions.
-      yield* Effect.forkScoped(refresh().pipe(Effect.repeat(Schedule.spaced("60 minutes")), Effect.ignore))
-    }
+    const cachedGet = yield* Effect.cached(populate)
 
-    return Service.of({ get, refresh })
+    return Service.of({
+      get: () => cachedGet,
+      // The catalog is a compile-time constant; refresh is kept as a no-op
+      // so existing call sites (cli/cmd/providers.ts:357, cli/cmd/models.ts)
+      // keep compiling until their surfaces are reworked/removed.
+      refresh: () => Effect.void,
+    })
   }),
 )
 
-export const node = makeGlobalNode({ service: Service, layer: layer, deps: [FSUtil.node, EventV2.node, httpClient] })
+export const node = makeGlobalNode({ service: Service, layer: layer, deps: [FSUtil.node] })
 
 export * as ModelsDev from "./models-dev"

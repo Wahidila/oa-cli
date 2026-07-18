@@ -39,7 +39,7 @@ function providerAuthLayer(directory: string, plugins: string[]) {
 
 describe("plugin.auth-override", () => {
   it.instance(
-    "user plugin overrides built-in github-copilot auth",
+    "user plugin registers github-copilot auth (no built-in plugin remains)",
     () =>
       Effect.gen(function* () {
         const tmp = yield* TestInstance
@@ -78,7 +78,9 @@ describe("plugin.auth-override", () => {
         expect(copilot).toBeDefined()
         expect(copilot.length).toBe(1)
         expect(copilot[0].label).toBe("Test Override Auth")
-        expect(plainMethods[ProviderV2.ID.make("github-copilot")][0].label).not.toBe("Test Override Auth")
+        // The built-in github-copilot OAuth plugin was removed (X3): with no
+        // user plugin supplying an "auth" hook, there is no entry at all.
+        expect(plainMethods[ProviderV2.ID.make("github-copilot")]).toBeUndefined()
       }),
     { git: true },
     30000,
