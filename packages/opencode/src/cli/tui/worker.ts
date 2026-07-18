@@ -71,10 +71,13 @@ export const rpc = {
     )
   },
   async authStatus(): Promise<{ authenticated: boolean }> {
-    // Reuse OpenagenticAuth.isAuthenticated() (env key -> stored credential) rather
-    // than re-deriving the check here — keeps this RPC in lockstep with the gate
-    // used by `oa-cli serve`/`oa-cli run` (src/cli/cmd/serve.ts, src/cli/cmd/run.ts).
-    const authenticated = await OpenagenticAuth.isAuthenticated().catch(() => false)
+    // The interactive TUI gate requires a real Google login (a STORED
+    // openagentic credential), NOT the OPENAGENTIC_API_KEY env escape hatch.
+    // Using isLoggedIn() here keeps onboarding on the "Login dengan Google"
+    // screen and avoids the half-authenticated state (env key bypasses the gate
+    // but no provider credential is connected) that falls through to the legacy
+    // API-key connect dialog. The env key still gates `oa-cli run`/`serve`.
+    const authenticated = await OpenagenticAuth.isLoggedIn().catch(() => false)
     return { authenticated }
   },
   async authLogin(): Promise<

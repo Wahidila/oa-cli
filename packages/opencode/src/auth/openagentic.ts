@@ -299,8 +299,28 @@ export const isAuthenticatedEffect = Effect.fn("OpenagenticAuth.isAuthenticated"
   return info?.type === "api" && info.key.trim().length > 0
 })
 
-/** Promise wrapper for non-Effect callers (TUI boot / login gate). */
+/** Promise wrapper for non-Effect callers (non-interactive run/serve gate). */
 export async function isAuthenticated(): Promise<boolean> {
   const { AppRuntime } = await import("@/effect/app-runtime")
   return AppRuntime.runPromise(isAuthenticatedEffect())
+}
+
+/**
+ * Stricter than isAuthenticated(): requires a STORED openagentic credential
+ * (a real Google login), ignoring the OPENAGENTIC_API_KEY env escape hatch.
+ * The interactive TUI onboarding uses this so first run always goes through the
+ * "Login dengan Google" screen — never a half-authenticated state where the
+ * gate is bypassed by the env key but no provider credential is connected,
+ * which would fall through to the legacy API-key connect dialog. The env key
+ * still authenticates non-interactive `run`/`serve` via isAuthenticated().
+ */
+export const isLoggedInEffect = Effect.fn("OpenagenticAuth.isLoggedIn")(function* () {
+  const auth = yield* Auth.Service
+  const info = yield* auth.get(PROVIDER_ID).pipe(Effect.orElseSucceed(() => undefined))
+  return info?.type === "api" && info.key.trim().length > 0
+})
+
+export async function isLoggedIn(): Promise<boolean> {
+  const { AppRuntime } = await import("@/effect/app-runtime")
+  return AppRuntime.runPromise(isLoggedInEffect())
 }
