@@ -8,11 +8,40 @@
 
 ## Instalasi
 
+### macOS / Linux
+
 ```bash
 curl -fsSL https://openagentic.id/cli/install | bash
 ```
 
-Binary per-platform juga tersedia di [GitHub Releases](https://github.com/Wahidila/oa-cli/releases).
+Perintah ini otomatis mendeteksi OS/arsitektur, mengunduh binary terbaru, dan memasangnya ke `~/.oa-cli/bin`.
+
+### Windows (PowerShell)
+
+```powershell
+irm https://openagentic.id/cli/install.ps1 | iex
+```
+
+Memasang `oa-cli.exe` ke `%LOCALAPPDATA%\oa-cli\bin` dan menambahkannya ke `PATH`. Buka terminal baru setelahnya.
+
+> Pakai **Git Bash** atau **WSL**? Perintah `curl … | bash` di bagian macOS/Linux juga jalan di Windows.
+
+### Manual (semua platform)
+
+Unduh binary untuk platform Anda dari [GitHub Releases](https://github.com/Wahidila/oa-cli/releases/latest), ekstrak, lalu letakkan di `PATH`:
+
+| Platform | File rilis | Binary |
+|---|---|---|
+| macOS (Apple Silicon) | `oa-cli-darwin-arm64.zip` | `oa-cli` |
+| macOS (Intel) | `oa-cli-darwin-x64.zip` | `oa-cli` |
+| Linux (x64) | `oa-cli-linux-x64.tar.gz` | `oa-cli` |
+| Linux (ARM64) | `oa-cli-linux-arm64.tar.gz` | `oa-cli` |
+| Windows (x64) | `oa-cli-windows-x64.zip` | `oa-cli.exe` |
+| Windows (ARM64) | `oa-cli-windows-arm64.zip` | `oa-cli.exe` |
+
+CPU lama tanpa AVX2? Pakai varian `-baseline`. Linux dengan musl (mis. Alpine)? Pakai varian `-musl`.
+
+Cek instalasi: `oa-cli --version`
 
 ## Mulai
 
