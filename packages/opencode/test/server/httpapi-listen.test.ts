@@ -293,8 +293,14 @@ describe("HttpApi Server.listen", () => {
       return true
     }) as typeof process.stderr.write
     try {
+      // "/status" isn't a registered route; it falls through to the UI
+      // catch-all. Previously that proxied to the real app.opencode.ai
+      // upstream and asserted on its 200 response — an unintentional live
+      // network dependency. The proxy is gone (see ui.ts), so the fallback
+      // now 404s locally. The log-suppression behavior under test doesn't
+      // depend on status code, so 404 exercises the same code path.
       const response = await Server.Default().app.request("/status")
-      expect(response.status).toBe(200)
+      expect(response.status).toBe(404)
     } finally {
       process.stderr.write = original
     }
