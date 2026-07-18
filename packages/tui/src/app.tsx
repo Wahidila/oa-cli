@@ -26,7 +26,6 @@ import {
 } from "solid-js"
 import { TuiPathsProvider, TuiStartupProvider, TuiTerminalEnvironmentProvider, useTuiStartup } from "./context/runtime"
 import { DialogProvider, useDialog } from "./ui/dialog"
-import { DialogProvider as DialogProviderList } from "./component/dialog-provider"
 import { ErrorComponent } from "./component/error-component"
 import { PluginRouteMissing } from "./component/plugin-route-missing"
 import { ProjectProvider, useProject } from "./context/project"
@@ -543,16 +542,12 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
     })
   })
 
-  createEffect(
-    on(
-      () => sync.status === "complete" && sync.data.provider.length === 0,
-      (isEmpty, wasEmpty) => {
-        // only trigger when we transition into an empty-provider state
-        if (!isEmpty || wasEmpty) return
-        dialog.replace(() => <DialogProviderList />)
-      },
-    ),
-  )
+  // NOTE: opencode auto-opened its pick-provider/API-key connect dialog whenever
+  // the provider list became empty. OA-cli removes that entirely — authentication
+  // is the openagentic.id Google login gate, and a transiently empty provider
+  // list (e.g. while discovery runs after login) must NOT log the user out or
+  // prompt for an API key. Explicit "connect" affordances redirect to the login
+  // screen via DialogProvider (component/dialog-provider.tsx).
 
   const connected = useConnected()
   const currentWorktreeWorkspace = createMemo(() => {
@@ -743,11 +738,13 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       },
       {
         name: "provider.connect",
-        title: "Connect provider",
+        title: "Login openagentic.id",
         suggested: !connected(),
-        slashName: "connect",
+        slashName: "login",
         run: () => {
-          dialog.replace(() => <DialogProviderList />)
+          // OA-cli auth is the openagentic.id Google login only — route to the
+          // login screen instead of opencode's pick-provider/API-key dialog.
+          auth.invalidate()
         },
         category: "Provider",
       },

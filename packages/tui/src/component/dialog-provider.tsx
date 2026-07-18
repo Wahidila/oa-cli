@@ -15,6 +15,7 @@ import { isConsoleManagedProvider } from "../util/provider-origin"
 import { useConnected } from "./use-connected"
 import { useBindings } from "../keymap"
 import { useClipboard } from "../context/clipboard"
+import { useAuth } from "../context/auth"
 
 const PROVIDER_PRIORITY: Record<string, number> = {
   opencode: 0,
@@ -226,8 +227,15 @@ export function createDialogProviderOptions() {
 }
 
 export function DialogProvider() {
-  const options = createDialogProviderOptions()
-  return <DialogSelect title="Connect a provider" options={options()} />
+  // OA-cli authenticates ONLY via the openagentic.id Google login — there is no
+  // API-key paste and only one provider. Any "connect a provider" affordance
+  // (model picker, empty-provider prompt, /login command) redirects to the
+  // login screen: invalidating auth makes the app-level gate render <Login>,
+  // which unmounts this dialog. createDialogProviderOptions() is still exported
+  // for the model picker's provider listing; only this connect flow is replaced.
+  const auth = useAuth()
+  onMount(() => auth.invalidate())
+  return null
 }
 
 interface AutoMethodProps {
