@@ -2023,3 +2023,52 @@ it.instance(
   }),
   { config: openagenticConfig },
 )
+
+// cfg.model is precedence level 1; the server-flagged default (level 3) must
+// never override an explicit config model, even when the flagged model is
+// present in the same provider's catalog.
+const openagenticConfigWithModel = () => ({
+  ...openagenticConfig(),
+  model: "openagentic/claude-sonnet-4-5",
+})
+
+it.instance(
+  "defaultModel prefers an explicit cfg.model over the server-flagged default",
+  Effect.gen(function* () {
+    const def = yield* Provider.use.defaultModel()
+    expect(String(def.providerID)).toBe("openagentic")
+    expect(String(def.modelID)).toBe("claude-sonnet-4-5")
+  }),
+  { config: openagenticConfigWithModel },
+)
+
+// The recent-model entry (precedence level 2) must also win over the
+// server-flagged default (level 3). `defaultModel` reads recents from
+// state/model.json, which lives outside the per-test tmpdir instance, so we
+// stash/restore any pre-existing file around the assertion.
+it.instance(
+  "defaultModel prefers a recent-model entry over the server-flagged default",
+  Effect.gen(function* () {
+    const modelJsonPath = path.join(Global.Path.state, "model.json")
+    const original = yield* Effect.promise(() => Filesystem.readText(modelJsonPath).catch(() => undefined))
+
+    yield* Effect.acquireRelease(
+      Effect.promise(() =>
+        Filesystem.write(
+          modelJsonPath,
+          JSON.stringify({ recent: [{ providerID: "openagentic", modelID: "claude-sonnet-4-5" }] }),
+        ),
+      ),
+      () =>
+        Effect.promise(async () => {
+          if (original !== undefined) await Filesystem.write(modelJsonPath, original)
+          else await unlink(modelJsonPath).catch(() => undefined)
+        }),
+    )
+
+    const def = yield* Provider.use.defaultModel()
+    expect(String(def.providerID)).toBe("openagentic")
+    expect(String(def.modelID)).toBe("claude-sonnet-4-5")
+  }),
+  { config: openagenticConfig },
+)
