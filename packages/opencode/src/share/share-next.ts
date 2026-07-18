@@ -20,7 +20,11 @@ import { ProviderV2 } from "@opencode-ai/core/provider"
 import { ModelV2 } from "@opencode-ai/core/model"
 import { EventV2 } from "@opencode-ai/core/event"
 
-const disabled = process.env["OPENCODE_DISABLE_SHARE"] === "true" || process.env["OPENCODE_DISABLE_SHARE"] === "1"
+// OA-cli Fase 1: session sharing is removed — no data ever leaves the machine.
+// Every ShareNext operation early-returns on this flag (see init/create/flush/
+// remove below). The opncd.ai fallback in request() is unreachable dead code
+// and is deleted together with the service in Fase 2.
+const disabled = true as boolean
 
 export type Api = {
   create: string
