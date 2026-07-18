@@ -26,6 +26,7 @@ import { FSUtil } from "@opencode-ai/core/fs-util"
 import { isRecord } from "@/util/record"
 import { optional } from "@opencode-ai/core/schema"
 import { ProviderTransform } from "./transform"
+import { OpenagenticModels } from "./openagentic-models"
 import { ProviderV2 } from "@opencode-ai/core/provider"
 import { ModelV2 } from "@opencode-ai/core/model"
 import { ModelStatus } from "./model-status"
@@ -166,6 +167,25 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
       return {
         autoload: Object.keys(input.models).length > 0,
         options: ok ? {} : { apiKey: "public" },
+      }
+    }),
+    openagentic: Effect.fnUntraced(function* (input: Info) {
+      const env = yield* dep.env()
+      const auth = yield* dep.auth(input.id)
+      const apiKey = env["OPENAGENTIC_API_KEY"] ?? (auth?.type === "api" ? auth.key : undefined)
+      const baseURL =
+        typeof input.options?.baseURL === "string" && input.options.baseURL !== ""
+          ? input.options.baseURL
+          : OpenagenticModels.apiBase()
+      return {
+        autoload: true,
+        options: {
+          baseURL: OpenagenticModels.apiBase(),
+        },
+        async discoverModels(): Promise<Record<string, Model>> {
+          const result = await OpenagenticModels.fetchModels({ apiKey, baseURL })
+          return result.models
+        },
       }
     }),
     openai: () =>
@@ -1123,14 +1143,15 @@ const layer = Layer.effect(
           mergeProvider(providerID, partial)
         }
 
-        const gitlab = ProviderV2.ID.make("gitlab")
-        if (discoveryLoaders[gitlab] && providers[gitlab] && isProviderAllowed(gitlab)) {
+        for (const [id, discover] of Object.entries(discoveryLoaders)) {
+          const providerID = ProviderV2.ID.make(id)
+          if (!providers[providerID] || !isProviderAllowed(providerID)) continue
           yield* Effect.promise(async () => {
             try {
-              const discovered = await discoveryLoaders[gitlab]()
+              const discovered = await discover()
               for (const [modelID, model] of Object.entries(discovered)) {
-                if (!providers[gitlab].models[modelID]) {
-                  providers[gitlab].models[modelID] = model
+                if (!providers[providerID].models[modelID]) {
+                  providers[providerID].models[modelID] = model
                 }
               }
             } catch (e) {}

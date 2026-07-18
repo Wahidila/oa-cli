@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test"
+import { afterAll, afterEach, expect, test } from "bun:test"
 import { mkdir, unlink } from "fs/promises"
 import path from "path"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
@@ -1958,4 +1958,58 @@ it.effect("opencode loader keeps paid models when auth exists", () =>
     expect(none).toBe(0)
     expect(keyedCount).toBeGreaterThan(0)
   }).pipe(provideMultiInstance),
+)
+
+// --- openagentic live discovery -------------------------------------------
+
+// The server deliberately flags gpt-5-codex as default: the id-sort heuristic
+// in sort() would pick claude-sonnet-4-5 ("claude-sonnet-4" sits later in the
+// priority list and the comparator is desc), so the flag is observable.
+const openagenticFixture = {
+  data: [
+    {
+      id: "claude-sonnet-4-5",
+      name: "Claude Sonnet 4.5",
+      provider: "anthropic",
+      context_limit: 200000,
+    },
+    { id: "gpt-5-codex", name: "GPT-5 Codex", provider: "openai", default: true },
+  ],
+}
+
+const openagenticServer = Bun.serve({
+  port: 0,
+  fetch(req) {
+    if (new URL(req.url).pathname === "/models") return Response.json(openagenticFixture)
+    return new Response("not found", { status: 404 })
+  },
+})
+afterAll(() => {
+  openagenticServer.stop(true)
+})
+
+const openagenticConfig = () => ({
+  provider: {
+    openagentic: {
+      name: "OpenAgentic",
+      npm: "@ai-sdk/openai-compatible",
+      options: {
+        apiKey: "test-key",
+        baseURL: `http://127.0.0.1:${openagenticServer.port}`,
+      },
+    },
+  },
+})
+
+it.instance(
+  "openagentic discovers models from the live models endpoint",
+  Effect.gen(function* () {
+    const providers = yield* list
+    const openagentic = providers[ProviderV2.ID.make("openagentic")]
+    expect(openagentic).toBeDefined()
+    expect(Object.keys(openagentic.models).sort()).toEqual(["claude-sonnet-4-5", "gpt-5-codex"])
+    expect(openagentic.models["gpt-5-codex"].options.default).toBe(true)
+    expect(openagentic.models["claude-sonnet-4-5"].api.npm).toBe("@ai-sdk/openai-compatible")
+  }),
+  { config: openagenticConfig },
 )
