@@ -19,7 +19,8 @@ import { pathToFileURL } from "url"
 import { open } from "node:fs/promises"
 import { Effect } from "effect"
 import { UI } from "../ui"
-import { effectCmd } from "../effect-cmd"
+import { effectCmd, fail } from "../effect-cmd"
+import { OpenagenticAuth } from "@/auth/openagentic"
 import { EOL } from "os"
 import { Filesystem } from "@/util/filesystem"
 import { createOpencodeClient, type OpencodeClient, type ToolPart } from "@opencode-ai/sdk/v2"
@@ -261,6 +262,13 @@ export const RunCommand = effectCmd({
         describe: "enable direct interactive demo slash commands; pass one as the message to run it immediately",
       }),
   handler: Effect.fn("Cli.run")(function* (args) {
+    // Auth gate: non-interactive use requires an OpenAgentic credential
+    // (auth.json key "openagentic") or the OPENAGENTIC_API_KEY escape hatch.
+    // --attach talks to a remote server that owns its own credentials.
+    if (!args.attach) {
+      const authed = yield* OpenagenticAuth.isAuthenticatedEffect()
+      if (!authed) return yield* fail(OpenagenticAuth.NOT_LOGGED_IN_MESSAGE)
+    }
     const { Agent } = yield* Effect.promise(() => import("@/agent/agent"))
     const { RuntimeFlags } = yield* Effect.promise(() => import("@/effect/runtime-flags"))
     const { InstanceRef } = yield* Effect.promise(() => import("@/effect/instance-ref"))

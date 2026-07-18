@@ -7,6 +7,7 @@ import { describe, expect } from "bun:test"
 import { Effect } from "effect"
 import { reply } from "../../lib/llm-server"
 import { cliIt } from "../../lib/cli-process"
+import { OpenagenticAuth } from "@/auth/openagentic"
 
 describe("opencode run (non-interactive subprocess)", () => {
   // Happy path: prompt completes, output reaches stdout, process exits 0.
@@ -325,6 +326,48 @@ describe("opencode run (non-interactive subprocess)", () => {
 
         expect(result.exitCode).not.toBe(0)
         expect(result.durationMs).toBeLessThan(30_000)
+      }),
+    30_000,
+  )
+
+  // Task X4: non-interactive `run` requires an OpenAgentic credential. The
+  // harness's isolatedEnv() injects a dummy OPENAGENTIC_API_KEY by default
+  // (so every other test above stays authenticated) — override it here to
+  // simulate a logged-out user and assert the gate rejects before touching
+  // the (fake) provider.
+  cliIt.concurrent(
+    "exits 1 with the not-logged-in message when unauthenticated",
+    ({ opencode }) =>
+      Effect.gen(function* () {
+        const result = yield* opencode.run("say hi", { env: { OPENAGENTIC_API_KEY: "" } })
+        opencode.expectExit(result, 1)
+        expect(result.stderr).toContain(OpenagenticAuth.NOT_LOGGED_IN_MESSAGE)
+      }),
+    15_000,
+  )
+
+  // Decision #3: `--attach <url>` talks to a remote server that owns its own
+  // credentials, so it must bypass the local login gate even when the local
+  // process has no OpenAgentic credential of its own. We don't assert on
+  // stdout formatting here (attach-mode text rendering is exercised by other
+  // tests) — the point is that the request reaches the model at all, proving
+  // the gate didn't short-circuit before the prompt was ever sent.
+  cliIt.live(
+    "attach mode is exempt from the OpenAgentic login gate",
+    ({ llm, opencode }) =>
+      Effect.gen(function* () {
+        yield* llm.text("attach reply")
+        const server = yield* opencode.serve()
+
+        const result = yield* opencode.run("say hi from attach exemption test", {
+          extraArgs: ["--attach", server.url],
+          env: { OPENAGENTIC_API_KEY: "" },
+        })
+
+        opencode.expectExit(result, 0)
+        expect(result.stderr).not.toContain(OpenagenticAuth.NOT_LOGGED_IN_MESSAGE)
+        const input = JSON.stringify(yield* llm.inputs)
+        expect(input).toContain("say hi from attach exemption test")
       }),
     30_000,
   )

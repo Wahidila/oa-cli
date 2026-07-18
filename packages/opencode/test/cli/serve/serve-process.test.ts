@@ -9,6 +9,7 @@ import { describe, expect } from "bun:test"
 import { Effect } from "effect"
 import { HttpClient } from "effect/unstable/http"
 import { cliIt } from "../../lib/cli-process"
+import { OpenagenticAuth } from "@/auth/openagentic"
 
 describe("opencode serve (subprocess)", () => {
   // Smoke test: server starts, binds a port, and /global/health responds.
@@ -57,5 +58,26 @@ describe("opencode serve (subprocess)", () => {
         expect(typeof code === "number" || code === null).toBe(true)
       }),
     60_000,
+  )
+
+  // Task X4: headless `serve` requires an OpenAgentic credential (it can hit
+  // the provider on every request, unlike the interactive TUI). The harness's
+  // isolatedEnv() injects a dummy OPENAGENTIC_API_KEY by default — override it
+  // here to simulate a logged-out user. Uses the raw `spawn` escape hatch
+  // (not `opencode.serve()`) because the gate makes the process exit before
+  // it ever prints the "listening on" sentinel the serve() helper waits for.
+  cliIt.concurrent(
+    "exits 1 with the not-logged-in message and never starts listening",
+    ({ opencode }) =>
+      Effect.gen(function* () {
+        const result = yield* opencode.spawn(["serve", "--port", "0"], {
+          env: { OPENAGENTIC_API_KEY: "" },
+          timeoutMs: 15_000,
+        })
+        opencode.expectExit(result, 1)
+        expect(result.stderr).toContain(OpenagenticAuth.NOT_LOGGED_IN_MESSAGE)
+        expect(result.stdout).not.toContain("listening on")
+      }),
+    20_000,
   )
 })
