@@ -55,6 +55,7 @@ import { Home } from "./routes/home"
 import { Session } from "./routes/session"
 import { Login } from "./routes/login"
 import { isAuthFailure } from "./util/auth-error"
+import { friendlyProviderError } from "./util/provider-error"
 import { PromptHistoryProvider } from "./component/prompt/history"
 import { FrecencyProvider } from "./component/prompt/frecency"
 import { PromptStashProvider } from "./component/prompt/stash"
@@ -1020,6 +1021,15 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
       toast.show({
         variant: "error",
         message: "Sesi berakhir — silakan login ulang",
+        duration: 5000,
+      })
+      return
+    }
+    const providerMessage = friendlyProviderError(error)
+    if (providerMessage) {
+      toast.show({
+        variant: "error",
+        message: providerMessage,
         duration: 5000,
       })
       return
