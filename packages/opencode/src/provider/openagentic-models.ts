@@ -31,7 +31,11 @@ export const ModelsResponse = Schema.Struct({
 })
 export type ModelsResponse = Schema.Schema.Type<typeof ModelsResponse>
 
-const decode = Schema.decodeUnknownOption(ModelsResponse)
+// Decode each model INDEPENDENTLY, not the whole array at once. A single
+// malformed entry (e.g. the backend ships a new model with `context_limit` as a
+// string) must never poison the entire catalog and make every model vanish —
+// the bad item is skipped, the rest still show.
+const decodeItem = Schema.decodeUnknownOption(ApiModel)
 
 export function cacheFile() {
   return path.join(Global.Path.cache, "openagentic-models.json")
@@ -41,9 +45,17 @@ export function fromResponse(input: unknown): {
   models: Record<string, Model>
   defaultModelID: string | undefined
 } {
-  const decoded = decode(input)
-  if (Option.isNone(decoded)) return { models: {}, defaultModelID: undefined }
-  const data = decoded.value.data
+  // Leniently pull the `data` array; a malformed envelope yields no models
+  // (the caller treats an empty result as a failure and serves the disk cache).
+  const rows =
+    input && typeof input === "object" && Array.isArray((input as { data?: unknown }).data)
+      ? (input as { data: unknown[] }).data
+      : []
+  const data: ApiModel[] = []
+  for (const raw of rows) {
+    const decoded = decodeItem(raw)
+    if (Option.isSome(decoded)) data.push(decoded.value)
+  }
   const defaultModelID = (data.find((item) => item.default === true) ?? data[0])?.id
   const models: Record<string, Model> = {}
   for (const item of data) {

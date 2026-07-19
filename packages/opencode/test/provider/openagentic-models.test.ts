@@ -52,6 +52,20 @@ describe("OpenagenticModels.fromResponse", () => {
     expect(OpenagenticModels.fromResponse({ nope: true }).models).toEqual({})
     expect(OpenagenticModels.fromResponse("garbage").models).toEqual({})
   })
+
+  test("skips a single malformed model instead of dropping the whole catalog", () => {
+    // One bad entry (context_limit as a string) must not hide the good models.
+    const { models, defaultModelID } = OpenagenticModels.fromResponse({
+      data: [
+        { id: "good-a", default: true },
+        { id: "bad", context_limit: "not-a-number" },
+        { id: "good-b" },
+        { nope: "no id at all" },
+      ],
+    })
+    expect(Object.keys(models).sort()).toEqual(["good-a", "good-b"])
+    expect(defaultModelID).toBe("good-a")
+  })
 })
 
 describe("OpenagenticModels.fetchModels", () => {
