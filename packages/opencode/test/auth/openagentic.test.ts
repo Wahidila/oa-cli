@@ -130,7 +130,7 @@ describe("OpenagenticAuth.callbackServer", () => {
 describe("OpenagenticAuth.exchangeToken", () => {
   const user = { email: "roni@example.com", name: "Roni", plan: "free" }
 
-  function makeTokenServer(handler: (body: { code: string; code_verifier: string }) => Response | Promise<Response>) {
+  function makeTokenServer(handler: (body: { code: string; code_verifier: string; device?: string }) => Response | Promise<Response>) {
     return Bun.serve({
       port: 0,
       fetch: async (request) => {
@@ -144,7 +144,7 @@ describe("OpenagenticAuth.exchangeToken", () => {
   }
 
   test("happy path: kirim code + code_verifier sebagai JSON, terima api_key + user", async () => {
-    let received: { code: string; code_verifier: string } | undefined
+    let received: { code: string; code_verifier: string; device?: string } | undefined
     const server = makeTokenServer((body) => {
       received = body
       return Response.json({ api_key: "oa-key-123", user })
@@ -153,7 +153,12 @@ describe("OpenagenticAuth.exchangeToken", () => {
       const result = await exchangeToken({ code: "the-code", verifier: "the-verifier", baseUrl: server.url.origin })
       expect(result.api_key).toBe("oa-key-123")
       expect(result.user).toEqual(user)
-      expect(received).toEqual({ code: "the-code", code_verifier: "the-verifier" })
+      expect(received).toBeDefined()
+      expect(received!.code).toBe("the-code")
+      expect(received!.code_verifier).toBe("the-verifier")
+      // device (hostname) is sent so the backend can dedupe keys per machine
+      expect(typeof received!.device).toBe("string")
+      expect((received!.device ?? "").length).toBeGreaterThan(0)
     } finally {
       server.stop(true)
     }
@@ -208,12 +213,14 @@ describe("OpenagenticAuth.login (integrasi mock backend)", () => {
   function makeBackend() {
     const issuedCode = "auth-code-1"
     let challenge: string | undefined
+    const received: { device?: string } = {}
     const server = Bun.serve({
       port: 0,
       fetch: async (request) => {
         const url = new URL(request.url)
         if (request.method === "POST" && url.pathname === "/api/v1/cli/token") {
-          const body = (await request.json()) as { code: string; code_verifier: string }
+          const body = (await request.json()) as { code: string; code_verifier: string; device?: string }
+          received.device = body.device
           const computed = base64UrlEncode(
             await crypto.subtle.digest("SHA-256", new TextEncoder().encode(body.code_verifier)),
           )
@@ -235,7 +242,7 @@ describe("OpenagenticAuth.login (integrasi mock backend)", () => {
       const callbackState = state ?? url.searchParams.get("state")!
       await fetch(`${redirect}?code=${issuedCode}&state=${encodeURIComponent(callbackState)}`)
     }
-    return { server, browse, baseUrl: () => server.url.origin }
+    return { server, browse, baseUrl: () => server.url.origin, received }
   }
 
   test("happy path: login menyimpan key ke Auth dan mengembalikan user", async () => {
@@ -247,6 +254,8 @@ describe("OpenagenticAuth.login (integrasi mock backend)", () => {
       })
       expect(result.key).toBe("oa-key-integration")
       expect(result.user).toEqual(user)
+      // login must send a non-empty device so the backend can dedupe keys per machine
+      expect(backend.received.device).toBeTruthy()
       const stored = await authRt.runPromise((auth) => auth.get("openagentic"))
       expect(stored).toMatchObject({ type: "api", key: "oa-key-integration" })
     } finally {

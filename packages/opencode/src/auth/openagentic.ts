@@ -1,6 +1,7 @@
 export * as OpenagenticAuth from "./openagentic"
 
 import open from "open"
+import { hostname } from "node:os"
 import { Effect } from "effect"
 import { makeRuntime } from "@opencode-ai/core/effect/runtime"
 import { AppNodeBuilder } from "@opencode-ai/core/effect/app-node-builder"
@@ -185,10 +186,14 @@ export async function exchangeToken(input: {
   baseUrl?: string
 }): Promise<TokenResponse> {
   const base = input.baseUrl ?? defaultBaseUrl()
+  // `device` lets the backend dedupe keys per machine: re-login from the same
+  // device should REPLACE that device's key, not mint another. Without it, every
+  // login accumulates a fresh "OA-cli" key in the dashboard.
+  const device = hostname() || "unknown-device"
   const response = await fetch(`${base}/api/v1/cli/token`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ code: input.code, code_verifier: input.verifier }),
+    body: JSON.stringify({ code: input.code, code_verifier: input.verifier, device }),
   })
   if (!response.ok) {
     const body = (await response.json().catch(() => undefined)) as

@@ -29,6 +29,8 @@ export interface OpenagenticMock {
   readonly url: string
   /** Every request received, in order. */
   readonly requests: { method: string; path: string }[]
+  /** Body of every POST /api/v1/cli/token, in order (the CLI sends `device` for per-device key dedup). */
+  readonly tokenRequests: { code?: string; device?: string }[]
   /** Force /api/v1/models and /api/v1/chat/completions to return the structured error. Pass undefined to restore. */
   failWith(mode: FailureMode | undefined): void
   close(): void
@@ -84,6 +86,7 @@ export function startOpenagenticMock(options: OpenagenticMockOptions = {}): Open
   let failure: FailureMode | undefined
   const codes = new Map<string, string>() // authorization code -> code_challenge
   const requests: { method: string; path: string }[] = []
+  const tokenRequests: { code?: string; device?: string }[] = []
 
   const authed = (req: Request) => req.headers.get("authorization") === `Bearer ${MOCK_API_KEY}`
 
@@ -113,13 +116,21 @@ export function startOpenagenticMock(options: OpenagenticMockOptions = {}): Open
       }
 
       if (req.method === "POST" && url.pathname === "/api/v1/cli/token") {
-        const body = (await req.json().catch(() => ({}))) as { code?: string; code_verifier?: string }
+        const body = (await req.json().catch(() => ({}))) as {
+          code?: string
+          code_verifier?: string
+          device?: string
+        }
+        tokenRequests.push({ code: body.code, device: body.device })
         const challenge = body.code ? codes.get(body.code) : undefined
         if (!body.code || !body.code_verifier || !challenge || s256(body.code_verifier) !== challenge)
           return json(400, {
             error: { code: "invalid_grant", message: "code expired, already used, or PKCE verification failed" },
           })
         codes.delete(body.code)
+        // Real backend labels the key `OA-cli — <device>` and dedupes per {user, device}
+        // before issuing (see docs/cli-token-key-dedup-handoff.md). The mock issues a
+        // fixed key; it records `device` so tests can assert the CLI sends it.
         return json(200, { api_key: MOCK_API_KEY, user: MOCK_USER })
       }
 
@@ -145,6 +156,7 @@ export function startOpenagenticMock(options: OpenagenticMockOptions = {}): Open
   return {
     url: `http://127.0.0.1:${server.port}`,
     requests,
+    tokenRequests,
     failWith(mode) {
       failure = mode
     },

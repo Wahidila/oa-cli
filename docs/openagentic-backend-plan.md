@@ -110,8 +110,9 @@ Exchange the authorization code for a labeled API key.
 
 **Request:** `Content-Type: application/json`
 ```json
-{ "code": "<code from the redirect>", "code_verifier": "<the PKCE verifier>" }
+{ "code": "<code from the redirect>", "code_verifier": "<the PKCE verifier>", "device": "<machine hostname>" }
 ```
+- `device` — the CLI's machine hostname (e.g. `Ronis-MacBook-Pro.local`). **Used for per-device key dedup — see the "Server checks" below.** Falls back to `"unknown-device"` if the hostname can't be read. Treat it as an opaque label, not a security boundary.
 
 **Success `200`:**
 ```json
@@ -120,7 +121,7 @@ Exchange the authorization code for a labeled API key.
   "user": { "email": "user@example.com", "name": "User Name", "plan": "free" }
 }
 ```
-- `api_key` — a working key the CLI will send as `Authorization: Bearer <api_key>` to `/api/v1/*`. Label it (e.g. `OA-cli — <hostname>` if you capture hostname; otherwise `OA-cli`) so it shows up revocable in the dashboard.
+- `api_key` — a working key the CLI will send as `Authorization: Bearer <api_key>` to `/api/v1/*`. Label it `OA-cli — <device>` (the CLI now always sends `device`) so it shows up revocable in the dashboard, and tag it as CLI-sourced so the per-device dedup in "Server checks" can find it.
 - `user.plan` — the user's current plan slug (e.g. `free`, `pro`). Shown in the CLI ("logged in as … (plan: free)").
 
 **Failure `400` (code expired / already used / PKCE mismatch / missing fields):**
@@ -133,16 +134,20 @@ The CLI treats any non-200 here as a login failure and shows a friendly message.
 1. `code` present and found in store.
 2. code not expired, not already consumed.
 3. `code_verifier` present and `BASE64URL(SHA256(code_verifier)) === stored code_challenge`.
-4. On success: **delete the code** (single use), issue the labeled key, return `{ api_key, user }`.
+4. On success: **delete the code** (single use).
+5. **Per-device dedup (required — fixes the "N keys accumulate" bug):** before issuing, **revoke every existing active CLI key for the same `{user, device}`**, then issue exactly one new key labeled `OA-cli — <device>`. Re-logging-in from the same machine must **replace** that machine's key, not add another. Without this, every login mints a fresh key and the dashboard fills up (a user testing over a couple of days reported 37 keys). Scope the dedup to CLI-minted keys only — never touch keys the user made by hand in the dashboard (tag CLI keys with a source/type marker such as `source: "cli"` so you can tell them apart).
+6. Return `{ api_key, user }`.
 
 **Reference (mock token handler):**
 ```js
-const { code, code_verifier } = body
+const { code, code_verifier, device } = body
 const challenge = code ? store.get(code)?.challenge : undefined
 if (!code || !code_verifier || !challenge || sha256b64url(code_verifier) !== challenge)
   return json(400, { error: { code: "invalid_grant", message: "code expired, already used, or PKCE verification failed" } })
-store.delete(code)                       // single use
-const apiKey = issueLabeledKey(userId, "OA-cli")
+store.delete(code)                                  // single use
+const label = "OA-cli — " + (device || "unknown-device")
+revokeActiveCliKeys(userId, device)                 // per-device dedup — replace, don't accumulate
+const apiKey = issueLabeledKey(userId, label, { source: "cli", device })
 return json(200, { api_key: apiKey, user: { email, name, plan } })
 ```
 
@@ -247,7 +252,7 @@ If all 6 pass, OA-cli works end-to-end against production.
 - **Code store:** any store with TTL works (Redis `SETEX code 300 {...}`, or a DB table with an `expires_at` and a `consumed_at`). Delete/mark-consumed on successful exchange.
 - **Loopback validation:** parse `redirect_uri`, require `protocol === 'http:'` and `hostname in ('127.0.0.1','localhost')`. Any port is fine (the CLI picks a random free one).
 - **PKCE:** `challenge = base64url(sha256(verifier))` with **no `=` padding**; standard library `crypto` in any language does this. RFC 7636 Appendix B test vector: verifier `dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk` → challenge `E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM` (use it as a unit test).
-- **Key label:** the CLI does not currently send a device name; label the key `OA-cli` (optionally append a hostname later if you add a field). Whatever appears must be revocable in the dashboard.
+- **Key label + per-device dedup:** the CLI sends `device` (its hostname) on every token exchange. Label the key `OA-cli — <device>`, tag it CLI-sourced, and **on each exchange revoke the same `{user, device}`'s existing active CLI key before issuing a new one** (§4 check 5). This is what stops the dashboard from accumulating one key per login. Whatever appears must be revocable in the dashboard.
 - **Install script (separate, optional):** the CLI's `curl -fsSL https://openagentic.id/cli/install | bash` expects `https://openagentic.id/cli/install` to serve an install shell script, and it downloads release binaries named `oa-cli-<os>-<arch>` from a GitHub release. That's the release-pipeline side (out of scope for these 3 endpoints) — noted here only so you know the CLI references that URL.
 
 ---
@@ -256,6 +261,7 @@ If all 6 pass, OA-cli works end-to-end against production.
 
 - [ ] `GET /auth/cli` — loopback-validated, PKCE-aware, Google login, 302 back with `code`+`state`, 5-min single-use codes
 - [ ] `POST /api/v1/cli/token` — PKCE verify, consume code, issue labeled revocable key, return `{api_key,user}`, `400 invalid_grant` on failure
+- [ ] `POST /api/v1/cli/token` — read `device`, **revoke the same `{user, device}`'s existing active CLI key before issuing** (per-device dedup; stops the dashboard filling with one key per login)
 - [ ] `GET /api/v1/models` — `{ data: [...] }` envelope, all active models, exactly one `default:true`
 - [ ] structured error envelope `{ error: { code, message, model?, required_plan?, retry_after? } }` on all `/api/v1/*` 401/403/429
 - [ ] `/api/v1/chat/completions` accepts the labeled keys + emits the error envelope
