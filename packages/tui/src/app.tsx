@@ -824,7 +824,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
         name: "docs.open",
         title: "Open docs",
         run: () => {
-          open("https://opencode.ai/docs").catch(() => {})
+          open("https://openagentic.id").catch(() => {})
           dialog.clear()
         },
         category: "System",
@@ -1052,7 +1052,6 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
   })
 
   event.on("installation.update-available", async (evt) => {
-    console.log("installation.update-available", evt)
     const version = evt.properties.version
 
     const skipped = kv.get("skipped_version")
@@ -1081,10 +1080,13 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
     const result = await sdk.client.global.upgrade({ target: version })
 
     if (result.error || !result.data?.success) {
+      const detail =
+        (result.data && result.data.success === false ? result.data.error : "") ||
+        (result.error ? String(result.error) : "")
       toast.show({
         variant: "error",
         title: "Update Failed",
-        message: "Update failed",
+        message: detail ? `Update failed: ${detail}` : "Update failed",
         duration: 10000,
       })
       return
@@ -1093,7 +1095,7 @@ function App(props: { onSnapshot?: () => Promise<string[]>; pluginHost: TuiPlugi
     await DialogAlert.show(
       dialog,
       "Update Complete",
-      `Successfully updated to OpenCode v${result.data.version}. Please restart the application.`,
+      `Successfully updated to OA-cli v${result.data.version}. Please restart the application.`,
     )
 
     void exit()

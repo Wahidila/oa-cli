@@ -340,8 +340,12 @@ download_and_install() {
         unzip -q "$tmp_dir/$filename" -d "$tmp_dir"
     fi
 
-    mv "$tmp_dir/oa-cli" "$INSTALL_DIR"
-    chmod 755 "${INSTALL_DIR}/oa-cli"
+    # Bun compiles the Windows target to oa-cli.exe; every other target to oa-cli.
+    local bin_name="oa-cli"
+    [ "$os" = "windows" ] && bin_name="oa-cli.exe"
+
+    mv "$tmp_dir/$bin_name" "${INSTALL_DIR}/$bin_name"
+    chmod 755 "${INSTALL_DIR}/$bin_name"
     rm -rf "$tmp_dir"
 }
 
